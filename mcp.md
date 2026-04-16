@@ -1,261 +1,285 @@
-# Building a Production MCP Server for Kubernetes
-
-## Architecture Overview
-
-The MCP server sits between Claude AI and your Kubernetes cluster. Claude sends tool calls over stdio or SSE, the MCP server translates them into Kubernetes API requests, and results flow back as structured text.
+Great idea! The main challenge is that Ollama doesn't speak MCP protocol natively, so we'll replace the Claude ↔ MCP layer with **Ollama's native tool-calling API** and rewrite the Kubernetes tools in Python. The architecture shifts slightly:
 
 ```
-Claude AI  ──stdio/SSE──▶  MCP Server (Node.js)  ──REST──▶  Kubernetes API Server
-                               │                                      │
-                               │  Tools:                  Namespaces: production
-                               │  • get_pods                          staging
-                               │  • get_logs                          kube-system
-                               │  • scale_deployment                  monitoring
-                               │  • describe_node
-                               └  • apply_manifest        Auth: RBAC / ServiceAccount
+User prompt → Ollama Agent (Python) → K8s tool functions → kubectl/k8s API
 ```
+
+Here's the full self-hosted version:Here's the full Ollama-based version. The key shift: instead of Claude speaking MCP, we use **Ollama's native tool-calling API** (supported on `llama3.1`, `qwen2.5`, `mistral`) with a Python orchestrator.Now here's all the code:
 
 ---
 
-## 1. Project Setup
+### 1. Prerequisites
 
 ```bash
-mkdir k8s-mcp-server && cd k8s-mcp-server
-npm init -y
-npm install @modelcontextprotocol/sdk @kubernetes/client-node zod
+# Install Ollama (Linux/macOS)
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Pull a model with tool-calling support
+ollama pull llama3.1        # recommended
+# or: ollama pull qwen2.5, mistral, mistral-nemo
+
+# Python deps
+pip install ollama kubernetes pyyaml
 ```
 
 ---
 
-## 2. The MCP Server (`src/index.ts`)
+### 2. The Agent (`k8s_agent.py`)
 
-```typescript
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
-import * as k8s from "@kubernetes/client-node";
-import { z } from "zod";
+```python
+import json
+import yaml
+import ollama
+from kubernetes import client, config
 
-// ─── Kubernetes client setup ─────────────────────────────────────────────────
-const kc = new k8s.KubeConfig();
+# ── Kubernetes client setup ─────────────────────────────────────────────────
+try:
+    config.load_incluster_config()   # running inside a Pod
+except config.ConfigException:
+    config.load_kube_config()        # local ~/.kube/config
 
-// In-cluster (Pod with ServiceAccount) or local kubeconfig
-if (process.env.KUBERNETES_SERVICE_HOST) {
-  kc.loadFromCluster();
-} else {
-  kc.loadFromDefault(); // reads ~/.kube/config
+core_v1   = client.CoreV1Api()
+apps_v1   = client.AppsV1Api()
+
+# ── Tool implementations ─────────────────────────────────────────────────────
+
+def get_pods(namespace: str = "default", label_selector: str = None) -> str:
+    kwargs = {"label_selector": label_selector} if label_selector else {}
+    pods = core_v1.list_namespaced_pod(namespace, **kwargs).items
+    if not pods:
+        return f"No pods found in namespace '{namespace}'."
+    lines = ["NAME  STATUS  READY  AGE"]
+    for p in pods:
+        phase = p.status.phase or "Unknown"
+        statuses = p.status.container_statuses or []
+        ready = sum(1 for c in statuses if c.ready)
+        total = len(statuses)
+        ts = p.metadata.creation_timestamp
+        age = f"{int((__import__('datetime').datetime.now(ts.tzinfo) - ts).total_seconds() // 60)}m" if ts else "?"
+        lines.append(f"{p.metadata.name}  {phase}  {ready}/{total}  {age}")
+    return "\n".join(lines)
+
+
+def get_logs(pod_name: str, namespace: str = "default",
+             container: str = None, tail_lines: int = 100) -> str:
+    kwargs = {"tail_lines": tail_lines}
+    if container:
+        kwargs["container"] = container
+    return core_v1.read_namespaced_pod_log(pod_name, namespace, **kwargs)
+
+
+def scale_deployment(name: str, replicas: int, namespace: str = "default") -> str:
+    if not (0 <= replicas <= 50):
+        return "Error: replicas must be between 0 and 50."
+    apps_v1.patch_namespaced_deployment_scale(
+        name, namespace,
+        {"spec": {"replicas": replicas}}
+    )
+    return f'Deployment "{name}" in "{namespace}" scaled to {replicas} replicas.'
+
+
+def describe_node(node_name: str) -> str:
+    node = core_v1.read_node(node_name)
+    cap   = node.status.capacity or {}
+    alloc = node.status.allocatable or {}
+    taints = ", ".join(
+        f"{t.key}={t.value or ''}:{t.effect}"
+        for t in (node.spec.taints or [])
+    ) or "none"
+    conditions = ", ".join(
+        f"{c.type}={c.status}"
+        for c in (node.status.conditions or [])
+    )
+    return "\n".join([
+        f"Node: {node.metadata.name}",
+        f"CPU capacity: {cap.get('cpu')}  allocatable: {alloc.get('cpu')}",
+        f"Memory capacity: {cap.get('memory')}  allocatable: {alloc.get('memory')}",
+        f"Max pods: {cap.get('pods')}",
+        f"Taints: {taints}",
+        f"Conditions: {conditions}",
+    ])
+
+
+def apply_manifest(manifest_yaml: str, namespace: str = "default") -> str:
+    manifest = yaml.safe_load(manifest_yaml)
+    kind = manifest.get("kind")
+    ns   = manifest.get("metadata", {}).get("namespace", namespace)
+    if kind == "Deployment":
+        apps_v1.create_namespaced_deployment(ns, manifest)
+        return f'Deployment "{manifest["metadata"]["name"]}" applied in "{ns}".'
+    return f'Error: kind "{kind}" not yet supported.'
+
+
+# ── Tool registry ─────────────────────────────────────────────────────────────
+
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_pods",
+            "description": "List all pods in a namespace with status and age",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "namespace":      {"type": "string", "description": "Kubernetes namespace (default: default)"},
+                    "label_selector": {"type": "string", "description": "Label selector e.g. app=nginx"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_logs",
+            "description": "Fetch recent logs from a pod container",
+            "parameters": {
+                "type": "object",
+                "required": ["pod_name"],
+                "properties": {
+                    "pod_name":   {"type": "string"},
+                    "namespace":  {"type": "string", "default": "default"},
+                    "container":  {"type": "string"},
+                    "tail_lines": {"type": "integer", "description": "Lines to return (default 100)"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "scale_deployment",
+            "description": "Scale a Deployment to a given replica count",
+            "parameters": {
+                "type": "object",
+                "required": ["name", "replicas"],
+                "properties": {
+                    "name":      {"type": "string"},
+                    "namespace": {"type": "string", "default": "default"},
+                    "replicas":  {"type": "integer", "minimum": 0, "maximum": 50},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "describe_node",
+            "description": "Show capacity, allocatable resources, taints, and conditions for a node",
+            "parameters": {
+                "type": "object",
+                "required": ["node_name"],
+                "properties": {
+                    "node_name": {"type": "string"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "apply_manifest",
+            "description": "Apply a Kubernetes YAML manifest",
+            "parameters": {
+                "type": "object",
+                "required": ["manifest_yaml"],
+                "properties": {
+                    "manifest_yaml": {"type": "string", "description": "Full YAML manifest"},
+                    "namespace":     {"type": "string", "default": "default"},
+                },
+            },
+        },
+    },
+]
+
+TOOL_MAP = {
+    "get_pods":          get_pods,
+    "get_logs":          get_logs,
+    "scale_deployment":  scale_deployment,
+    "describe_node":     describe_node,
+    "apply_manifest":    apply_manifest,
 }
 
-const k8sApi  = kc.makeApiClient(k8s.CoreV1Api);
-const appsApi = kc.makeApiClient(k8s.AppsV1Api);
+# ── Agent loop ────────────────────────────────────────────────────────────────
 
-// ─── MCP Server ──────────────────────────────────────────────────────────────
-const server = new Server(
-  { name: "k8s-mcp-server", version: "1.0.0" },
-  { capabilities: { tools: {} } }
-);
+SYSTEM = (
+    "You are a Kubernetes operations assistant. "
+    "Use the provided tools to answer questions about the cluster. "
+    "Always call a tool before answering factual questions about cluster state."
+)
 
-// ─── Tool definitions ────────────────────────────────────────────────────────
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [
-    {
-      name: "get_pods",
-      description: "List all pods in a namespace with their status and age",
-      inputSchema: {
-        type: "object",
-        properties: {
-          namespace: { type: "string", description: "Kubernetes namespace (default: default)" },
-          label_selector: { type: "string", description: "Optional label selector e.g. app=nginx" },
-        },
-      },
-    },
-    {
-      name: "get_logs",
-      description: "Fetch recent logs from a pod container",
-      inputSchema: {
-        type: "object",
-        required: ["pod_name"],
-        properties: {
-          pod_name:   { type: "string" },
-          namespace:  { type: "string", default: "default" },
-          container:  { type: "string", description: "Container name (omit for single-container pods)" },
-          tail_lines: { type: "number", description: "Number of lines to return (default 100)" },
-        },
-      },
-    },
-    {
-      name: "scale_deployment",
-      description: "Scale a Deployment to a given replica count",
-      inputSchema: {
-        type: "object",
-        required: ["name", "replicas"],
-        properties: {
-          name:      { type: "string" },
-          namespace: { type: "string", default: "default" },
-          replicas:  { type: "number", minimum: 0, maximum: 50 },
-        },
-      },
-    },
-    {
-      name: "describe_node",
-      description: "Return capacity, allocatable resources, taints, and conditions for a node",
-      inputSchema: {
-        type: "object",
-        required: ["node_name"],
-        properties: {
-          node_name: { type: "string" },
-        },
-      },
-    },
-    {
-      name: "apply_manifest",
-      description: "Apply a raw Kubernetes YAML/JSON manifest (server-side apply)",
-      inputSchema: {
-        type: "object",
-        required: ["manifest"],
-        properties: {
-          manifest:  { type: "string", description: "Full YAML or JSON manifest" },
-          namespace: { type: "string", default: "default" },
-        },
-      },
-    },
-  ],
-}));
+def run_agent(user_prompt: str, model: str = "llama3.1") -> str:
+    messages = [
+        {"role": "system",  "content": SYSTEM},
+        {"role": "user",    "content": user_prompt},
+    ]
 
-// ─── Tool handlers ───────────────────────────────────────────────────────────
-server.setRequestHandler(CallToolRequestSchema, async (req) => {
-  const { name, arguments: args } = req.params;
+    while True:
+        response = ollama.chat(
+            model=model,
+            messages=messages,
+            tools=TOOLS,
+        )
+        msg = response["message"]
+        messages.append(msg)
 
-  try {
-    switch (name) {
-      // ── get_pods ────────────────────────────────────────────────────────────
-      case "get_pods": {
-        const ns  = (args?.namespace as string) || "default";
-        const sel = (args?.label_selector as string) || undefined;
-        const res = await k8sApi.listNamespacedPod(
-          ns, undefined, undefined, undefined, undefined, sel
-        );
-        const rows = res.body.items.map((p) => {
-          const phase     = p.status?.phase ?? "Unknown";
-          const ready     = p.status?.containerStatuses?.filter(c => c.ready).length ?? 0;
-          const total     = p.status?.containerStatuses?.length ?? 0;
-          const startTime = p.metadata?.creationTimestamp;
-          const age       = startTime
-            ? Math.floor((Date.now() - new Date(startTime).getTime()) / 60000) + "m"
-            : "?";
-          return `${p.metadata?.name}  ${phase}  ${ready}/${total}  ${age}`;
-        });
-        return {
-          content: [{ type: "text", text: `NAME  STATUS  READY  AGE\n${rows.join("\n")}` }],
-        };
-      }
+        # No tool call → final answer
+        if not msg.get("tool_calls"):
+            return msg["content"]
 
-      // ── get_logs ────────────────────────────────────────────────────────────
-      case "get_logs": {
-        const pod       = args?.pod_name as string;
-        const ns        = (args?.namespace as string) || "default";
-        const container = args?.container as string | undefined;
-        const tailLines = (args?.tail_lines as number) || 100;
-        const res = await k8sApi.readNamespacedPodLog(
-          pod, ns, container, undefined, undefined,
-          undefined, undefined, undefined, undefined, tailLines
-        );
-        return { content: [{ type: "text", text: res.body }] };
-      }
+        # Execute every tool call the model requested
+        for tc in msg["tool_calls"]:
+            fn_name = tc["function"]["name"]
+            fn_args = tc["function"]["arguments"]
+            if isinstance(fn_args, str):
+                fn_args = json.loads(fn_args)
 
-      // ── scale_deployment ────────────────────────────────────────────────────
-      case "scale_deployment": {
-        const name_    = args?.name as string;
-        const ns       = (args?.namespace as string) || "default";
-        const replicas = args?.replicas as number;
-        await appsApi.patchNamespacedDeploymentScale(name_, ns, {
-          spec: { replicas },
-        }, undefined, undefined, undefined, undefined, undefined, {
-          headers: { "Content-Type": "application/strategic-merge-patch+json" },
-        });
-        return {
-          content: [{ type: "text", text: `Deployment "${name_}" scaled to ${replicas} replicas.` }],
-        };
-      }
+            print(f"  [tool] {fn_name}({fn_args})")
+            try:
+                result = TOOL_MAP[fn_name](**fn_args)
+            except Exception as e:
+                result = f"Error: {e}"
 
-      // ── describe_node ───────────────────────────────────────────────────────
-      case "describe_node": {
-        const res  = await k8sApi.readNode(args?.node_name as string);
-        const node = res.body;
-        const cap  = node.status?.capacity ?? {};
-        const alloc = node.status?.allocatable ?? {};
-        const taints = (node.spec?.taints ?? [])
-          .map(t => `${t.key}=${t.value ?? ""}:${t.effect}`).join(", ") || "none";
-        const conditions = (node.status?.conditions ?? [])
-          .map(c => `${c.type}=${c.status}`).join(", ");
-        return {
-          content: [{
-            type: "text",
-            text: [
-              `Node: ${node.metadata?.name}`,
-              `CPU capacity: ${cap.cpu}  allocatable: ${alloc.cpu}`,
-              `Memory capacity: ${cap.memory}  allocatable: ${alloc.memory}`,
-              `Pods max: ${cap.pods}`,
-              `Taints: ${taints}`,
-              `Conditions: ${conditions}`,
-            ].join("\n"),
-          }],
-        };
-      }
+            messages.append({
+                "role":    "tool",
+                "content": result,
+            })
 
-      // ── apply_manifest ──────────────────────────────────────────────────────
-      case "apply_manifest": {
-        const yaml     = await import("js-yaml");
-        const manifest = yaml.load(args?.manifest as string) as Record<string, unknown>;
-        const ns       = (args?.namespace as string) || (manifest?.metadata as any)?.namespace || "default";
-        if (manifest.kind === "Deployment") {
-          await appsApi.createNamespacedDeployment(ns, manifest as k8s.V1Deployment);
-          return { content: [{ type: "text", text: `Deployment applied in namespace "${ns}".` }] };
-        }
-        throw new Error(`apply_manifest: kind "${manifest.kind}" not yet supported`);
-      }
+# ── CLI ───────────────────────────────────────────────────────────────────────
 
-      default:
-        throw new Error(`Unknown tool: ${name}`);
-    }
-  } catch (err: any) {
-    return {
-      content: [{ type: "text", text: `Error: ${err.message}` }],
-      isError: true,
-    };
-  }
-});
+if __name__ == "__main__":
+    import sys
 
-// ─── Start ───────────────────────────────────────────────────────────────────
-async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("k8s-mcp-server running on stdio");
-}
+    model = "llama3.1"
+    print(f"K8s Agent (Ollama/{model}) — type 'exit' to quit\n")
 
-main().catch(console.error);
+    while True:
+        try:
+            prompt = input("You: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+        if prompt.lower() in ("exit", "quit"):
+            break
+        if not prompt:
+            continue
+        print(f"Agent: {run_agent(prompt, model=model)}\n")
 ```
 
 ---
 
-## 3. RBAC Manifest (`k8s/rbac.yaml`)
-
-Least-privilege ServiceAccount — read-only on most resources, write only on scale.
+### 3. RBAC (unchanged, still required)
 
 ```yaml
+# k8s/rbac.yaml — same as the original lab
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: mcp-server
-  namespace: mcp-system
+  name: k8s-agent
+  namespace: default
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: mcp-server-role
+  name: k8s-agent-role
 rules:
   - apiGroups: [""]
     resources: ["pods", "pods/log", "nodes", "namespaces"]
@@ -267,88 +291,50 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: mcp-server-binding
+  name: k8s-agent-binding
 subjects:
   - kind: ServiceAccount
-    name: mcp-server
-    namespace: mcp-system
+    name: k8s-agent
+    namespace: default
 roleRef:
   kind: ClusterRole
-  name: mcp-server-role
+  name: k8s-agent-role
   apiGroup: rbac.authorization.k8s.io
 ```
 
+Apply it: `kubectl apply -f k8s/rbac.yaml`
+
 ---
 
-## 4. Deployment Manifest (`k8s/deployment.yaml`)
+### 4. Run it
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mcp-server
-  namespace: mcp-system
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: mcp-server
-  template:
-    metadata:
-      labels:
-        app: mcp-server
-    spec:
-      serviceAccountName: mcp-server   # picks up in-cluster auth automatically
-      containers:
-        - name: server
-          image: your-registry/k8s-mcp-server:latest
-          resources:
-            requests: { cpu: "100m", memory: "128Mi" }
-            limits:   { cpu: "500m", memory: "256Mi" }
-          readinessProbe:
-            exec:
-              command: ["node", "-e", "process.exit(0)"]
-            initialDelaySeconds: 5
+```bash
+# Local dev (uses ~/.kube/config)
+python k8s_agent.py
+
+# Example session:
+You: List all crashing pods in the production namespace
+  [tool] get_pods({'namespace': 'production'})
+Agent: Here are the pods in production...
+
+You: Show me the last 50 lines from api-server pod logs
+  [tool] get_logs({'pod_name': 'api-server-xyz', 'tail_lines': 50})
+
+You: Scale frontend to 3 replicas
+  [tool] scale_deployment({'name': 'frontend', 'replicas': 3})
 ```
 
 ---
 
-## 5. Claude Desktop Config (`~/.claude/claude_desktop_config.json`)
+### Key differences vs the original MCP lab
 
-```json
-{
-  "mcpServers": {
-    "kubernetes": {
-      "command": "node",
-      "args": ["dist/index.js"],
-      "cwd": "/path/to/k8s-mcp-server"
-    }
-  }
-}
-```
+| | Original (MCP + Claude) | This (Ollama) |
+|---|---|---|
+| LLM | Claude API (cloud) | Ollama (fully local) |
+| Protocol | MCP stdio/SSE | Ollama native tool-call API |
+| Language | TypeScript | Python |
+| Multi-user | SSE transport | Add FastAPI wrapper |
+| Cost | API tokens | Zero (local GPU/CPU) |
+| Best model | Claude Sonnet | `llama3.1`, `qwen2.5` |
 
----
-
-## Example Claude Conversations
-
-| Prompt | Tool called |
-|---|---|
-| "List all crashing pods in production" | `get_pods` namespace=production |
-| "Show me the last 50 lines of the api-server pod logs" | `get_logs` tail_lines=50 |
-| "Scale the frontend deployment to 5 replicas" | `scale_deployment` replicas=5 |
-| "What is node worker-3's available memory?" | `describe_node` node_name=worker-3 |
-| "Deploy this Deployment YAML: …" | `apply_manifest` |
-
----
-
-## Production Checklist
-
-**Security** — always run with a dedicated ServiceAccount using RBAC least-privilege. Never mount a `cluster-admin` kubeconfig inside the Pod.
-
-**Validation** — use `zod` schemas on every tool input before touching the k8s API. The `scale_deployment` example caps replicas at 50 — add similar guards everywhere.
-
-**Transport** — use stdio for local dev (Claude Desktop). Switch to SSE (`SSEServerTransport`) for multi-user or remote deployments, behind an mTLS-authenticated gateway.
-
-**Namespacing** — scope every API call to an explicit namespace. Never default to cluster-wide calls unless the tool genuinely requires it.
-
-**Error surfaces** — return `isError: true` on failures so Claude treats them as tool errors rather than silently empty results.
+For a **multi-user / server deployment**, wrap `run_agent()` in a FastAPI endpoint and run Ollama as a systemd service. The tool functions stay identical.
