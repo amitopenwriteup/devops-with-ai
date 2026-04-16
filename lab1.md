@@ -1,4 +1,4 @@
-# AI in DevOps — Day 1 Workshop
+# AI in DevOps — Lab 1 Workshop
 
 ---
 
