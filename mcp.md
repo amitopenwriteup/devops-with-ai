@@ -1,4 +1,4 @@
-Great idea! The main challenge is that Ollama doesn't speak MCP protocol natively, so we'll replace the Claude ↔ MCP layer with **Ollama's native tool-calling API** and rewrite the Kubernetes tools in Python. The architecture shifts slightly:
+ MCP layer with **Ollama's native tool-calling API** and rewrite the Kubernetes tools in Python. The architecture shifts slightly:
 
 ```
 User prompt → Ollama Agent (Python) → K8s tool functions → kubectl/k8s API
