@@ -1,4 +1,4 @@
-# 🤖 GitHub Copilot for Shell Scripting
+# GitHub Copilot for Shell Scripting
 ## Hands-On Lab Workshop
 
 > **Workshop Level:** Beginner to Intermediate
@@ -7,7 +7,7 @@
 
 ---
 
-## 🎯 Workshop Objectives
+## Workshop Objectives
 
 By the end of this workshop, you will be able to:
 
