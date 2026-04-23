@@ -51,7 +51,7 @@ Developer Git Push
                                                           ┌─────────▼──────────┐
                                                           │   Ollama Server    │
                                                           │  ┌──────────────┐  │
-                                                          │  │ llama3.2:3b  │  │
+                                                          │  │ llama3.2:1b  │  │
                                                           │  │ codellama    │  │
                                                           │  │ mistral      │  │
                                                           │  └──────────────┘  │
@@ -81,7 +81,7 @@ Developer Git Push
 | Component | Technology | Notes |
 |-----------|-----------|-------|
 | Local AI | **Ollama** | Runs models locally |
-| AI Model | **llama3.2:3b** | Fast, good quality, ~2GB |
+| AI Model | **llama3.2:1b** | Fast, good quality, ~2GB |
 | CI/CD | **Jenkins** | Already installed |
 | Containers | **Docker** | Already installed |
 | Kubernetes | **Kind** | Already set up |
@@ -235,11 +235,11 @@ curl http://localhost:11434/
 
 ### Step 2.1 — Pull the Recommended Model
 
-For this workshop we use **llama3.2:3b** — it is small (2 GB), fast on CPU, and good enough for code review tasks.
+For this workshop we use **llama3.2:1b** — it is small (2 GB), fast on CPU, and good enough for code review tasks.
 
 ```bash
 # Pull the model (downloads ~2 GB — do this before the demo!)
-ollama pull llama3.2:3b
+ollama pull llama3.2:1b
 
 # Watch the download progress:
 # pulling manifest
@@ -272,7 +272,7 @@ ollama list
 
 ```bash
 # Quick interactive test
-ollama run llama3.2:3b "Say hello in one sentence"
+ollama run llama3.2:1b "Say hello in one sentence"
 
 # Expected: Hello! How can I assist you today?
 
@@ -291,13 +291,13 @@ Ollama exposes a simple REST API. The AI agent script uses this directly.
 # Basic API call — this is what our Python script will do
 curl http://localhost:11434/api/generate \
   -d '{
-    "model": "llama3.2:3b",
+    "model": "llama3.2:1b",
     "prompt": "Review this Python code quality in one sentence: x=1+1",
     "stream": false
   }'
 
 # Expected JSON response:
-# {"model":"llama3.2:3b","response":"The code is simple...","done":true,...}
+# {"model":"llama3.2:1b","response":"The code is simple...","done":true,...}
 ```
 
 ### Step 3.2 — Test Chat Format (used in our agent)
@@ -305,7 +305,7 @@ curl http://localhost:11434/api/generate \
 ```bash
 curl http://localhost:11434/api/chat \
   -d '{
-    "model": "llama3.2:3b",
+    "model": "llama3.2:1b",
     "stream": false,
     "messages": [
       {
@@ -328,14 +328,14 @@ curl http://localhost:11434/api/tags
 
 # Check model info
 curl http://localhost:11434/api/show \
-  -d '{"name": "llama3.2:3b"}'
+  -d '{"name": "llama3.2:1b"}'
 
 # Check running models
 curl http://localhost:11434/api/ps
 
 # Delete a model
 curl -X DELETE http://localhost:11434/api/delete \
-  -d '{"name": "llama3.2:3b"}'
+  -d '{"name": "llama3.2:1b"}'
 ```
 
 ---
@@ -368,7 +368,7 @@ from pathlib import Path
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 OLLAMA_HOST  = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:1b")
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -392,7 +392,7 @@ def check_model_available(model: str):
         req  = urllib.request.urlopen(url, timeout=10)
         data = json.loads(req.read())
         models = [m["name"] for m in data.get("models", [])]
-        # Match partial names e.g. "llama3.2:3b" matches "llama3.2:3b"
+        # Match partial names e.g. "llama3.2:1b" matches "llama3.2:1b"
         available = any(model in m or m in model for m in models)
         if not available:
             print(f"❌ Model '{model}' not found. Pull it first:", file=sys.stderr)
@@ -837,7 +837,7 @@ git push
 ```bash
 # On Jenkins server, in your repo directory:
 export OLLAMA_HOST="http://localhost:11434"
-export OLLAMA_MODEL="llama3.2:3b"
+export OLLAMA_MODEL="llama3.2:1b"
 
 python3 ai-agent/ollama_agent.py \
   --path ./app \
@@ -875,7 +875,7 @@ pipeline {
         )
         choice(
             name: 'OLLAMA_MODEL',
-            choices: ['llama3.2:3b', 'llama3.2:1b', 'codellama:7b', 'mistral:7b'],
+            choices: ['llama3.2:1b', 'llama3.2:1b', 'codellama:7b', 'mistral:7b'],
             description: 'Ollama model to use for AI review'
         )
         booleanParam(
@@ -1356,7 +1356,7 @@ curl http://localhost:11434/
 
 # 2. Model pulled?
 ollama list
-# Expected: llama3.2:3b listed
+# Expected: llama3.2:1b listed
 
 # 3. Jenkins running?
 curl http://localhost:8080/
@@ -1387,7 +1387,7 @@ cat test_report.json | python3 -m json.tool
 3. Click **"Build with Parameters"**
 4. Select:
    - `DEPLOY_ENV`: `dev`
-   - `OLLAMA_MODEL`: `llama3.2:3b`
+   - `OLLAMA_MODEL`: `llama3.2:1b`
    - `AI_BLOCK_ON_REJECT`: ✅ checked
 5. Click **Build**
 6. Click the build number → **Console Output**
@@ -1461,7 +1461,7 @@ sudo OLLAMA_HOST=0.0.0.0 ollama serve
 
 ```bash
 # Pull the model
-ollama pull llama3.2:3b
+ollama pull llama3.2:1b
 
 # Verify it downloaded
 ollama list
@@ -1531,11 +1531,11 @@ curl http://localhost:9876/health
 │                    OLLAMA COMMANDS                                │
 ├──────────────────────────────────────────────────────────────────┤
 │  ollama serve              → Start Ollama server                 │
-│  ollama pull llama3.2:3b   → Download model                      │
+│  ollama pull llama3.2:1b   → Download model                      │
 │  ollama list               → Show downloaded models              │
-│  ollama run llama3.2:3b    → Interactive chat                    │
+│  ollama run llama3.2:1b    → Interactive chat                    │
 │  ollama ps                 → Show running models + GPU/CPU       │
-│  ollama rm llama3.2:3b     → Delete a model                      │
+│  ollama rm llama3.2:1b     → Delete a model                      │
 └──────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────┐
@@ -1544,7 +1544,7 @@ curl http://localhost:9876/health
 │  Model         │  Size    │  RAM     │  Best For                 │
 ├────────────────┼──────────┼──────────┼───────────────────────────┤
 │  llama3.2:1b   │  1.3 GB  │  4 GB+   │  Fast demo, low RAM       │
-│  llama3.2:3b   │  2.0 GB  │  8 GB+   │  ✅ Workshop default      │
+│  llama3.2:1b   │  2.0 GB  │  8 GB+   │  ✅ Workshop default      │
 │  mistral:7b    │  4.1 GB  │  8 GB+   │  Better JSON quality      │
 │  codellama:7b  │  3.8 GB  │  8 GB+   │  Best for code review     │
 └────────────────┴──────────┴──────────┴───────────────────────────┘
