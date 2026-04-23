@@ -1,464 +1,966 @@
-# 🚀 Jenkins CI/CD Pipeline + Docker + Kubernetes + AI Agent Lab
-## Workshop Guide — End-to-End DevOps with Intelligent Automation
+# 🦙 Jenkins CI/CD + Ollama Local AI Agent
+## Step-by-Step Workshop Guide — 100% Free, No API Keys, Runs Locally
 
 ---
 
 ## 📋 Table of Contents
 
 1. [Workshop Overview](#1-workshop-overview)
-2. [Prerequisites & Environment Setup](#2-prerequisites--environment-setup)
-3. [Lab 1 — Jenkins Installation & Configuration](#3-lab-1--jenkins-installation--configuration)
-4. [Lab 2 — Dockerizing Your Application](#4-lab-2--dockerizing-your-application)
-5. [Lab 3 — Jenkins Pipeline with Docker Build](#5-lab-3--jenkins-pipeline-with-docker-build)
-6. [Lab 4 — Kubernetes Cluster Setup](#6-lab-4--kubernetes-cluster-setup)
-7. [Lab 5 — Deploying to Kubernetes via Jenkins](#7-lab-5--deploying-to-kubernetes-via-jenkins)
-8. [Lab 6 — AI Agent Integration](#8-lab-6--ai-agent-integration)
-9. [Lab 7 — Full End-to-End AI-Powered Pipeline](#9-lab-7--full-end-to-end-ai-powered-pipeline)
-10. [Troubleshooting & Reference](#10-troubleshooting--reference)
+2. [Prerequisites](#2-prerequisites)
+3. [Lab 1 — Install & Run Ollama](#3-lab-1--install--run-ollama)
+4. [Lab 2 — Pull AI Models](#4-lab-2--pull-ai-models)
+5. [Lab 3 — Test Ollama API](#5-lab-3--test-ollama-api)
+6. [Lab 4 — Build the AI Agent Script](#6-lab-4--build-the-ai-agent-script)
+7. [Lab 5 — Connect Ollama to Jenkins](#7-lab-5--connect-ollama-to-jenkins)
+8. [Lab 6 — Full Jenkinsfile with Ollama AI Stages](#8-lab-6--full-jenkinsfile-with-ollama-ai-stages)
+9. [Lab 7 — Deploy to Kind Kubernetes](#9-lab-7--deploy-to-kind-kubernetes)
+10. [Lab 8 — Demo Run & Verification](#10-lab-8--demo-run--verification)
+11. [Troubleshooting](#11-troubleshooting)
 
 ---
 
 ## 1. Workshop Overview
 
-### 🎯 Objectives
+### 🎯 What You Will Build
 
-By the end of this workshop, you will be able to:
+A complete CI/CD pipeline where **Ollama runs AI models locally on your machine** — no internet, no API keys, no costs — and Jenkins calls it automatically on every git push to:
 
-- Set up a production-grade Jenkins CI/CD server
-- Build and push Docker images automatically on every commit
-- Deploy containerized applications to a Kubernetes cluster
-- Integrate an AI Agent that performs automated code review, security scanning, and deployment decisions
-- Build a fully autonomous pipeline that self-heals and self-reports
+- ✅ Review code quality
+- ✅ Scan for security vulnerabilities
+- ✅ Make deployment approval decisions
 
-### 🏗️ Architecture Diagram
+### 🏗️ Architecture
 
 ```
-Developer Push
-     │
-     ▼
-┌─────────────────┐
-│   GitHub Repo   │──── Webhook ────────────────────────┐
-└─────────────────┘                                      │
-                                                         ▼
-                                              ┌─────────────────────┐
-                                              │   Jenkins Master    │
-                                              │  ┌───────────────┐  │
-                                              │  │  Pipeline DSL │  │
-                                              │  └───────┬───────┘  │
-                                              └──────────┼──────────┘
-                          ┌───────────────────────────────┤
-                          │                               │
-                          ▼                               ▼
-               ┌─────────────────┐             ┌─────────────────────┐
-               │  Docker Build   │             │    AI Agent Layer   │
-               │  & Push to      │             │  ┌───────────────┐  │
-               │  Registry       │             │  │ Code Review   │  │
-               └────────┬────────┘             │  │ Sec Scanning  │  │
-                        │                      │  │ Deploy Guard  │  │
-                        ▼                      └──────────┬──────────┘
-               ┌─────────────────┐                        │
-               │  Kubernetes     │◄───────────────────────┘
-               │  Cluster        │
-               │  ┌───────────┐  │
-               │  │  Dev NS   │  │
-               │  │  Staging  │  │
-               │  │  Prod NS  │  │
-               └─────────────────┘
+Developer Git Push
+       │
+       ▼
+┌─────────────────┐     Webhook      ┌──────────────────────┐
+│   GitHub Repo   │ ───────────────► │   Jenkins Server     │
+└─────────────────┘                  │                      │
+                                     │  Stage 1: Checkout   │
+                                     │  Stage 2: Tests      │
+                                     │  Stage 3: Docker     │
+                                     │  Stage 4: AI Review  │──────┐
+                                     │  Stage 5: AI SecScan │      │
+                                     │  Stage 6: AI Deploy  │      │
+                                     │  Stage 7: K8s Deploy │      │
+                                     └──────────────────────┘      │
+                                                                    │ HTTP
+                                                                    │ localhost:11434
+                                                          ┌─────────▼──────────┐
+                                                          │   Ollama Server    │
+                                                          │  ┌──────────────┐  │
+                                                          │  │ llama3.2:3b  │  │
+                                                          │  │ codellama    │  │
+                                                          │  │ mistral      │  │
+                                                          │  └──────────────┘  │
+                                                          │  Runs 100% LOCAL   │
+                                                          └────────────────────┘
+                                                                    │
+                                                          ┌─────────▼──────────┐
+                                                          │  Kind Kubernetes   │
+                                                          │  workshop-dev      │
+                                                          │  workshop-prod     │
+                                                          └────────────────────┘
 ```
+
+### 💡 Why Ollama?
+
+| Feature | Ollama | Cloud APIs |
+|---------|--------|-----------|
+| Cost | **FREE** | Pay per token |
+| Internet | **Not needed** | Required |
+| API Key | **None** | Required |
+| Privacy | **100% local** | Data sent to cloud |
+| Speed | Fast (GPU/CPU) | Depends on network |
+| Models | 100+ available | Limited to provider |
 
 ### 📦 Tech Stack
 
-| Component      | Technology              | Version     |
-|----------------|-------------------------|-------------|
-| CI/CD Server   | Jenkins                 | 2.440+      |
-| Containers     | Docker                  | 25.x        |
-| Orchestration  | Kubernetes (k3s/EKS)    | 1.29+       |
-| Registry       | Docker Hub / ECR        | —           |
-| AI Agent       | Python + Anthropic API  | Claude 3.x  |
-| SCM            | GitHub                  | —           |
-| Monitoring     | Prometheus + Grafana    | —           |
+| Component | Technology | Notes |
+|-----------|-----------|-------|
+| Local AI | **Ollama** | Runs models locally |
+| AI Model | **llama3.2:3b** | Fast, good quality, ~2GB |
+| CI/CD | **Jenkins** | Already installed |
+| Containers | **Docker** | Already installed |
+| Kubernetes | **Kind** | Already set up |
+| Agent Script | **Python 3** | Calls Ollama REST API |
 
 ---
 
-## 2. Prerequisites & Environment Setup
+## 2. Prerequisites
 
-### 🖥️ Hardware Requirements
-
-| Role           | CPU  | RAM   | Disk   |
-|----------------|------|-------|--------|
-| Jenkins Master | 2    | 4 GB  | 30 GB  |
-| Worker Node x2 | 2    | 4 GB  | 20 GB  |
-| K8s Control    | 2    | 4 GB  | 20 GB  |
-| K8s Worker x2  | 2    | 4 GB  | 20 GB  |
-
-### 🔧 Software Prerequisites
+### ✅ Already Installed (Your Setup)
 
 ```bash
-# Verify installations on each node
-docker --version          # Docker 25.x+
-kubectl version --client  # v1.29+
-java --version            # Java 17+
-git --version             # 2.x+
-python3 --version         # 3.10+
-pip3 --version
+# Verify your existing setup
+docker --version         # Docker is running
+kubectl version --client  # kubectl available
+kind version             # Kind cluster exists
+java --version           # Java 17+ for Jenkins
+jenkins --version        # Jenkins running
+python3 --version        # Python 3.8+
 ```
 
-### 🔑 Accounts & Access Needed
+### 🖥️ Minimum Hardware for Ollama
 
-- GitHub account with a sample repo
-- Docker Hub account (or AWS ECR access)
-- Anthropic API key (for AI Agent lab)
-- SSH access to all servers
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| RAM | 8 GB | 16 GB |
+| Disk | 10 GB free | 20 GB free |
+| CPU | 4 cores | 8 cores |
+| GPU | Not required | Speeds up 10x |
 
-### 📁 Workshop Repository Structure
+### 📁 Final Project Structure
 
 ```
-workshop-repo/
+your-repo/
+├── Jenkinsfile              ← Main pipeline (Lab 6)
+├── Dockerfile               ← Your existing Dockerfile
 ├── app/
-│   ├── app.py                  # Sample Python Flask app
+│   ├── app.py
 │   ├── requirements.txt
 │   └── tests/
 │       └── test_app.py
-├── Dockerfile
-├── docker-compose.yml
-├── Jenkinsfile                 # Main pipeline definition
-├── k8s/
-│   ├── namespace.yaml
-│   ├── deployment.yaml
-│   ├── service.yaml
-│   ├── ingress.yaml
-│   └── hpa.yaml
 ├── ai-agent/
-│   ├── agent.py               # AI Agent script
-│   ├── requirements.txt
-│   └── prompts/
-│       ├── code_review.txt
-│       ├── security_scan.txt
-│       └── deploy_decision.txt
-└── scripts/
-    ├── setup-jenkins.sh
-    ├── setup-k8s.sh
-    └── rollback.sh
+│   ├── ollama_agent.py      ← AI Agent script (Lab 4)
+│   └── requirements.txt
+└── k8s/
+    ├── deployment.yaml
+    ├── service.yaml
+    └── configmap.yaml
 ```
 
 ---
 
-## 3. Lab 1 — Jenkins Installation & Configuration
+## 3. Lab 1 — Install & Run Ollama
 
-### Step 1.1 — Install Jenkins on Ubuntu
+### Step 1.1 — Install Ollama
 
-```bash
-# Update system
-sudo apt update && sudo apt upgrade -y
-
-# Install Java 17
-sudo apt install -y openjdk-17-jdk
-
-# Add Jenkins repository
-curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key \
-  | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
-
-echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
-  https://pkg.jenkins.io/debian-stable binary/" \
-  | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
-
-sudo apt update
-sudo apt install -y jenkins
-
-# Start and enable Jenkins
-sudo systemctl start jenkins
-sudo systemctl enable jenkins
-sudo systemctl status jenkins
-```
-
-### Step 1.2 — Initial Jenkins Setup
+**Linux (Ubuntu/Debian) — Recommended for Jenkins server:**
 
 ```bash
-# Retrieve the initial admin password
-sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+# One-line install
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Verify installation
+ollama --version
 ```
 
-Open browser: `http://<your-server-ip>:8080`
-
-1. Paste the initial admin password
-2. Select **"Install suggested plugins"**
-3. Create your admin user
-4. Set Jenkins URL
-
-### Step 1.3 — Install Required Plugins
-
-Navigate to: **Manage Jenkins → Plugins → Available**
-
-Install the following plugins:
-
-```
-✅ Pipeline
-✅ Docker Pipeline
-✅ Docker Commons
-✅ Kubernetes CLI
-✅ Kubernetes
-✅ GitHub Integration
-✅ Git
-✅ Credentials Binding
-✅ Blue Ocean (optional, for better UI)
-✅ Slack Notification (optional)
-✅ JUnit
-✅ HTML Publisher
-```
-
-### Step 1.4 — Configure Docker Access for Jenkins
+**macOS:**
 
 ```bash
-# Add jenkins user to docker group
-sudo usermod -aG docker jenkins
+# Via Homebrew
+brew install ollama
 
-# Restart Jenkins to apply
-sudo systemctl restart jenkins
-
-# Verify
-sudo -u jenkins docker ps
+# Or download the app from https://ollama.com
 ```
 
-### Step 1.5 — Configure Credentials in Jenkins
+**Windows:**
 
-Navigate to: **Manage Jenkins → Credentials → System → Global credentials**
-
-Add the following secrets:
-
-| ID                    | Type             | Description              |
-|-----------------------|------------------|--------------------------|
-| `docker-hub-creds`    | Username/Password| Docker Hub login         |
-| `github-token`        | Secret text      | GitHub PAT               |
-| `kubeconfig`          | Secret file      | Kubernetes config file   |
-| `anthropic-api-key`   | Secret text      | AI Agent API key         |
+```
+Download installer from: https://ollama.com/download/windows
+Run the installer → Ollama runs as a system service
+```
 
 ---
 
-## 4. Lab 2 — Dockerizing Your Application
+### Step 1.2 — Start Ollama Server
 
-### Step 2.1 — Sample Flask Application
+```bash
+# Start Ollama (runs on port 11434 by default)
+ollama serve
+
+# You should see:
+# time=... level=INFO msg="Listening on 127.0.0.1:11434 (version x.x.x)"
+```
+
+> 💡 **Keep this terminal open.** Ollama must be running when Jenkins calls it.
+
+**To run Ollama as a background service on Linux:**
+
+```bash
+# Check if already running as systemd service (after install.sh)
+sudo systemctl status ollama
+
+# If not running, start it
+sudo systemctl start ollama
+sudo systemctl enable ollama     # auto-start on boot
+
+# Check logs
+sudo journalctl -u ollama -f
+```
+
+---
+
+### Step 1.3 — Make Ollama Accessible to Jenkins
+
+By default Ollama only listens on `127.0.0.1`. If Jenkins runs on the same machine, you are fine. If Jenkins is on a different server:
+
+```bash
+# Allow Ollama to listen on all interfaces
+# Edit the systemd service
+sudo systemctl edit ollama
+
+# Add these lines in the editor:
+[Service]
+Environment="OLLAMA_HOST=0.0.0.0:11434"
+
+# Save and restart
+sudo systemctl daemon-reload
+sudo systemctl restart ollama
+
+# Verify it listens on 0.0.0.0
+ss -tlnp | grep 11434
+```
+
+> ⚠️ **Security note:** Only do this in your lab/demo network. In production, use a firewall rule to restrict access.
+
+---
+
+### Step 1.4 — Verify Ollama is Running
+
+```bash
+# Basic health check
+curl http://localhost:11434/
+
+# Expected response:
+# Ollama is running
+```
+
+---
+
+## 4. Lab 2 — Pull AI Models
+
+### Step 2.1 — Pull the Recommended Model
+
+For this workshop we use **llama3.2:3b** — it is small (2 GB), fast on CPU, and good enough for code review tasks.
+
+```bash
+# Pull the model (downloads ~2 GB — do this before the demo!)
+ollama pull llama3.2:3b
+
+# Watch the download progress:
+# pulling manifest
+# pulling 6a0746a1ec1a... 100% ████████ 2.0 GB
+# verifying sha256 digest
+# writing manifest
+# success
+```
+
+### Step 2.2 — Optional: Pull Other Models
+
+```bash
+# Better code understanding (4 GB, needs 8GB+ RAM)
+ollama pull codellama:7b
+
+# Fast and lightweight (1.5 GB)
+ollama pull llama3.2:1b
+
+# Balanced quality (4.1 GB, needs 8GB+ RAM)
+ollama pull mistral:7b
+
+# See all available models
+ollama list
+
+# See all models on Ollama hub
+# https://ollama.com/library
+```
+
+### Step 2.3 — Test the Model Works
+
+```bash
+# Quick interactive test
+ollama run llama3.2:3b "Say hello in one sentence"
+
+# Expected: Hello! How can I assist you today?
+
+# Exit with: /bye
+```
+
+---
+
+## 5. Lab 3 — Test Ollama API
+
+Ollama exposes a simple REST API. The AI agent script uses this directly.
+
+### Step 3.1 — Test with curl
+
+```bash
+# Basic API call — this is what our Python script will do
+curl http://localhost:11434/api/generate \
+  -d '{
+    "model": "llama3.2:3b",
+    "prompt": "Review this Python code quality in one sentence: x=1+1",
+    "stream": false
+  }'
+
+# Expected JSON response:
+# {"model":"llama3.2:3b","response":"The code is simple...","done":true,...}
+```
+
+### Step 3.2 — Test Chat Format (used in our agent)
+
+```bash
+curl http://localhost:11434/api/chat \
+  -d '{
+    "model": "llama3.2:3b",
+    "stream": false,
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a code reviewer. Reply only in JSON."
+      },
+      {
+        "role": "user",
+        "content": "Review: def add(a,b): return a+b. Give score 1-10 as JSON: {\"score\": N}"
+      }
+    ]
+  }'
+```
+
+### Step 3.3 — Useful Ollama API Endpoints
+
+```bash
+# List all pulled models
+curl http://localhost:11434/api/tags
+
+# Check model info
+curl http://localhost:11434/api/show \
+  -d '{"name": "llama3.2:3b"}'
+
+# Check running models
+curl http://localhost:11434/api/ps
+
+# Delete a model
+curl -X DELETE http://localhost:11434/api/delete \
+  -d '{"name": "llama3.2:3b"}'
+```
+
+---
+
+## 6. Lab 4 — Build the AI Agent Script
+
+Create the file `ai-agent/ollama_agent.py` in your repository:
 
 ```python
-# app/app.py
-from flask import Flask, jsonify
+#!/usr/bin/env python3
+"""
+Ollama AI Agent for Jenkins CI/CD Pipeline
+==========================================
+100% FREE — Runs locally — No API keys needed
+Calls Ollama REST API for:
+  1. Code Review & Quality Score
+  2. Security Vulnerability Scan
+  3. Deployment Decision (Approve / Reject)
+"""
+
 import os
+import sys
+import json
+import time
+import argparse
+import urllib.request
+import urllib.error
+from pathlib import Path
 
-app = Flask(__name__)
 
-@app.route('/')
-def home():
-    return jsonify({
-        "message": "Hello from CI/CD Workshop!",
-        "version": os.getenv("APP_VERSION", "1.0.0"),
-        "environment": os.getenv("ENVIRONMENT", "development")
+# ── Configuration ──────────────────────────────────────────────────────────────
+OLLAMA_HOST  = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def check_ollama_running():
+    """Verify Ollama server is reachable before doing anything."""
+    try:
+        req = urllib.request.urlopen(OLLAMA_HOST, timeout=5)
+        return True
+    except Exception:
+        print(f"❌ Cannot reach Ollama at {OLLAMA_HOST}", file=sys.stderr)
+        print("   → Make sure Ollama is running: ollama serve", file=sys.stderr)
+        print("   → Or check OLLAMA_HOST environment variable", file=sys.stderr)
+        sys.exit(1)
+
+
+def check_model_available(model: str):
+    """Check that the required model is pulled."""
+    try:
+        url  = f"{OLLAMA_HOST}/api/tags"
+        req  = urllib.request.urlopen(url, timeout=10)
+        data = json.loads(req.read())
+        models = [m["name"] for m in data.get("models", [])]
+        # Match partial names e.g. "llama3.2:3b" matches "llama3.2:3b"
+        available = any(model in m or m in model for m in models)
+        if not available:
+            print(f"❌ Model '{model}' not found. Pull it first:", file=sys.stderr)
+            print(f"   ollama pull {model}", file=sys.stderr)
+            sys.exit(1)
+        print(f"✅ Model '{model}' is available")
+    except Exception as e:
+        print(f"⚠️  Could not verify model (continuing): {e}", file=sys.stderr)
+
+
+def call_ollama(system_prompt: str, user_prompt: str, timeout: int = 120) -> str:
+    """
+    Call Ollama /api/chat endpoint.
+    Returns the model's response text.
+    Uses only stdlib — no pip install required for the HTTP call itself.
+    """
+    payload = json.dumps({
+        "model":  OLLAMA_MODEL,
+        "stream": False,
+        "options": {
+            "temperature": 0.1,    # low temp = more deterministic JSON
+            "num_predict": 1024,   # max output tokens
+        },
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_prompt},
+        ],
+    }).encode("utf-8")
+
+    url = f"{OLLAMA_HOST}/api/chat"
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    start = time.time()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read())
+            elapsed = time.time() - start
+            print(f"   ⏱  Ollama responded in {elapsed:.1f}s")
+            return data["message"]["content"].strip()
+    except urllib.error.URLError as e:
+        print(f"❌ Ollama request failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def safe_parse_json(text: str, fallback: dict) -> dict:
+    """
+    Strip markdown fences and parse JSON.
+    If parsing fails, try to extract first {...} block.
+    Returns fallback dict on complete failure.
+    """
+    # Remove ```json ... ``` fences
+    text = text.strip()
+    if "```" in text:
+        parts = text.split("```")
+        for part in parts:
+            part = part.strip().lstrip("json").strip()
+            if part.startswith("{"):
+                text = part
+                break
+
+    # Try direct parse
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Try to find first { ... } block
+    start = text.find("{")
+    end   = text.rfind("}")
+    if start != -1 and end != -1:
+        try:
+            return json.loads(text[start:end+1])
+        except json.JSONDecodeError:
+            pass
+
+    print(f"⚠️  Could not parse JSON, using fallback. Raw response:\n{text[:300]}")
+    return fallback
+
+
+def read_source_files(path: str, max_chars: int = 5000) -> str:
+    """Read source files from path, truncated to max_chars to fit model context."""
+    exts = (".py", ".js", ".ts", ".go", ".java", ".rb", ".php")
+    files = []
+    for ext in exts:
+        for f in Path(path).rglob(f"*{ext}"):
+            if any(skip in str(f) for skip in
+                   ["__pycache__", "node_modules", ".git", "venv", ".tox"]):
+                continue
+            try:
+                content = f.read_text(errors="replace")
+                files.append(f"### {f.name}\n{content}")
+            except Exception:
+                pass
+
+    combined = "\n\n".join(files)
+    if len(combined) > max_chars:
+        combined = combined[:max_chars] + "\n\n[... truncated for context window ...]"
+    return combined if combined else "# No source files found in path"
+
+
+# ── Stage 1: Code Review ───────────────────────────────────────────────────────
+
+def run_code_review(code_path: str) -> dict:
+    print("\n" + "─"*50)
+    print("📋 STAGE 1: AI Code Review")
+    print("─"*50)
+
+    code = read_source_files(code_path)
+
+    system = """You are a senior software engineer doing a code review.
+You MUST respond with ONLY valid JSON. No explanation. No markdown. No extra text.
+Just the raw JSON object."""
+
+    user = f"""Review the following code and return ONLY this JSON:
+{{
+  "score": <integer 1-10>,
+  "grade": "<A|B|C|D|F>",
+  "critical_issues": ["<issue description>"],
+  "major_issues": ["<issue description>"],
+  "suggestions": ["<improvement suggestion>"],
+  "summary": "<one sentence summary>",
+  "approved": <true or false>
+}}
+
+Rules:
+- score 8-10 = excellent, 6-7 = good, 4-5 = needs work, 1-3 = poor
+- approved = true if score >= 6
+- Be specific in issues, not generic
+
+Code to review:
+{code}"""
+
+    raw    = call_ollama(system, user)
+    result = safe_parse_json(raw, fallback={
+        "score": 5, "grade": "C",
+        "critical_issues": [], "major_issues": [],
+        "suggestions": ["Review manually"],
+        "summary": "AI review inconclusive",
+        "approved": True
     })
 
-@app.route('/health')
-def health():
-    return jsonify({"status": "healthy"}), 200
+    score = result.get("score", 5)
+    grade = result.get("grade", "?")
+    print(f"\n  🎯 Score   : {score}/10  (Grade: {grade})")
+    print(f"  📝 Summary : {result.get('summary', 'N/A')}")
 
-@app.route('/ready')
-def ready():
-    return jsonify({"status": "ready"}), 200
+    for issue in result.get("critical_issues", []):
+        print(f"  🔴 CRITICAL: {issue}")
+    for issue in result.get("major_issues", []):
+        print(f"  🟡 MAJOR   : {issue}")
+    for tip in result.get("suggestions", []):
+        print(f"  💡 TIP     : {tip}")
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    return result
+
+
+# ── Stage 2: Security Scan ─────────────────────────────────────────────────────
+
+def run_security_scan(code_path: str) -> dict:
+    print("\n" + "─"*50)
+    print("🔒 STAGE 2: AI Security Scan")
+    print("─"*50)
+
+    code = read_source_files(code_path)
+
+    system = """You are an application security expert doing a security audit.
+You MUST respond with ONLY valid JSON. No explanation. No markdown. No extra text."""
+
+    user = f"""Scan for security vulnerabilities and return ONLY this JSON:
+{{
+  "risk_level": "<LOW|MEDIUM|HIGH|CRITICAL>",
+  "score": <integer 1-10 where 10=most secure>,
+  "vulnerabilities": [
+    {{
+      "type": "<vulnerability type e.g. SQL Injection>",
+      "severity": "<LOW|MEDIUM|HIGH|CRITICAL>",
+      "file": "<filename>",
+      "line": "<line number or 'unknown'>",
+      "description": "<what the issue is>",
+      "recommendation": "<how to fix it>"
+    }}
+  ],
+  "secrets_found": <true or false>,
+  "owasp_issues": ["<OWASP Top 10 category if applicable>"],
+  "summary": "<one sentence>",
+  "block_deployment": <true or false>
+}}
+
+Rules:
+- block_deployment = true ONLY if CRITICAL vulnerabilities found OR secrets found
+- Check for: hardcoded passwords, SQL injection, command injection,
+  insecure deserialization, path traversal, XSS, weak crypto
+- If code looks clean, still list risk_level as LOW
+
+Code to scan:
+{code}"""
+
+    raw    = call_ollama(system, user)
+    result = safe_parse_json(raw, fallback={
+        "risk_level": "UNKNOWN",
+        "score": 5,
+        "vulnerabilities": [],
+        "secrets_found": False,
+        "owasp_issues": [],
+        "summary": "Security scan inconclusive",
+        "block_deployment": False
+    })
+
+    risk  = result.get("risk_level", "UNKNOWN")
+    score = result.get("score", "?")
+    risk_icon = {"LOW": "🟢", "MEDIUM": "🟡", "HIGH": "🟠", "CRITICAL": "🔴"}.get(risk, "⚪")
+
+    print(f"\n  {risk_icon} Risk Level : {risk}")
+    print(f"  🔐 Sec Score: {score}/10")
+    print(f"  📝 Summary  : {result.get('summary', 'N/A')}")
+    print(f"  🔑 Secrets  : {'YES ⚠️' if result.get('secrets_found') else 'None found ✅'}")
+
+    for v in result.get("vulnerabilities", []):
+        sev_icon = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}.get(
+            v.get("severity", ""), "⚪")
+        print(f"  {sev_icon} {v.get('severity','?')} [{v.get('type','?')}]"
+              f" in {v.get('file','?')}: {v.get('description','')[:70]}")
+        print(f"     Fix: {v.get('recommendation','')[:70]}")
+
+    return result
+
+
+# ── Stage 3: Deploy Decision ───────────────────────────────────────────────────
+
+def run_deploy_decision(code_review: dict, security_scan: dict, environment: str) -> dict:
+    print("\n" + "─"*50)
+    print(f"🚦 STAGE 3: AI Deploy Decision  [{environment.upper()}]")
+    print("─"*50)
+
+    system = """You are a DevOps lead making deployment approval decisions.
+Be STRICT for production. Be lenient for dev/staging.
+You MUST respond with ONLY valid JSON. No explanation. No markdown."""
+
+    user = f"""Make a deployment decision and return ONLY this JSON:
+{{
+  "decision": "<APPROVE|REJECT|APPROVE_WITH_CONDITIONS>",
+  "confidence": <integer 0-100>,
+  "risk_assessment": "<LOW|MEDIUM|HIGH>",
+  "reason": "<clear explanation max 2 sentences>",
+  "conditions": ["<condition to meet if APPROVE_WITH_CONDITIONS>"],
+  "recommended_actions": ["<action to take before or after deploy>"],
+  "estimated_rollback_needed": <true or false>
+}}
+
+Environment target: {environment}
+
+Code Review Results:
+- Score: {code_review.get('score', 'N/A')}/10
+- Grade: {code_review.get('grade', 'N/A')}
+- Critical Issues: {code_review.get('critical_issues', [])}
+- Major Issues: {code_review.get('major_issues', [])}
+- Approved: {code_review.get('approved', True)}
+
+Security Scan Results:
+- Risk Level: {security_scan.get('risk_level', 'UNKNOWN')}
+- Secrets Found: {security_scan.get('secrets_found', False)}
+- Block Deployment: {security_scan.get('block_deployment', False)}
+- Vulnerabilities Count: {len(security_scan.get('vulnerabilities', []))}
+- Summary: {security_scan.get('summary', 'N/A')}
+
+Decision rules:
+- REJECT if: secrets found OR CRITICAL security risk OR code score < 3
+- REJECT for prod if: code score < 5 OR HIGH security risk
+- APPROVE_WITH_CONDITIONS if: code score 5-6 OR MEDIUM security risk
+- APPROVE if: code score >= 7 AND LOW security risk
+"""
+
+    raw    = call_ollama(system, user)
+    result = safe_parse_json(raw, fallback={
+        "decision": "APPROVE",
+        "confidence": 50,
+        "risk_assessment": "MEDIUM",
+        "reason": "AI decision inconclusive — manual review recommended",
+        "conditions": [],
+        "recommended_actions": ["Review manually before proceeding"],
+        "estimated_rollback_needed": False
+    })
+
+    decision   = result.get("decision", "APPROVE")
+    confidence = result.get("confidence", "?")
+    dec_icon   = {"APPROVE": "✅", "REJECT": "❌",
+                  "APPROVE_WITH_CONDITIONS": "⚠️"}.get(decision, "❓")
+
+    print(f"\n  {dec_icon} Decision   : {decision}")
+    print(f"  📊 Confidence: {confidence}%")
+    print(f"  ⚠️  Risk      : {result.get('risk_assessment', 'N/A')}")
+    print(f"  📝 Reason    : {result.get('reason', 'N/A')}")
+
+    for cond in result.get("conditions", []):
+        print(f"  ⚙️  Condition : {cond}")
+    for action in result.get("recommended_actions", []):
+        print(f"  🔧 Action   : {action}")
+
+    return result
+
+
+# ── Main ───────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Ollama AI Agent for Jenkins CI/CD — 100% Local & Free"
+    )
+    parser.add_argument("--path",        default="./app",         help="Path to source code")
+    parser.add_argument("--environment", default="dev",           help="Target environment")
+    parser.add_argument("--output",      default="ai_report.json",help="Output JSON report file")
+    parser.add_argument("--model",       default="",              help="Override Ollama model")
+    args = parser.parse_args()
+
+    # Allow CLI override of model
+    global OLLAMA_MODEL
+    if args.model:
+        OLLAMA_MODEL = args.model
+
+    print("\n╔══════════════════════════════════════════════════╗")
+    print("║   🦙 Ollama AI Agent — Jenkins CI/CD            ║")
+    print(f"║   Host  : {OLLAMA_HOST:<38}║")
+    print(f"║   Model : {OLLAMA_MODEL:<38}║")
+    print(f"║   Path  : {args.path:<38}║")
+    print(f"║   Target: {args.environment:<38}║")
+    print("╚══════════════════════════════════════════════════╝")
+
+    # Pre-flight checks
+    check_ollama_running()
+    check_model_available(OLLAMA_MODEL)
+
+    # Run all three AI stages
+    code_review   = run_code_review(args.path)
+    security_scan = run_security_scan(args.path)
+    deploy_dec    = run_deploy_decision(code_review, security_scan, args.environment)
+
+    # Compile full report
+    report = {
+        "ollama_host":     OLLAMA_HOST,
+        "ollama_model":    OLLAMA_MODEL,
+        "environment":     args.environment,
+        "code_review":     code_review,
+        "security_scan":   security_scan,
+        "deploy_decision": deploy_dec,
+        # Top-level shortcuts for Jenkinsfile readJSON
+        "score":           code_review.get("score", 5),
+        "risk_level":      security_scan.get("risk_level", "UNKNOWN"),
+        "decision":        deploy_dec.get("decision", "APPROVE"),
+        "summary":         code_review.get("summary", ""),
+    }
+
+    with open(args.output, "w") as fh:
+        json.dump(report, fh, indent=2)
+
+    print("\n" + "═"*50)
+    print(f"  📄 Report  → {args.output}")
+    print(f"  🎯 Score   → {report['score']}/10")
+    print(f"  🔒 Risk    → {report['risk_level']}")
+    print(f"  🚦 Decision→ {report['decision']}")
+    print("═"*50 + "\n")
+
+    # Exit codes used by Jenkinsfile pipeline
+    if security_scan.get("block_deployment", False):
+        print("🚨 Security scan is blocking deployment!", file=sys.stderr)
+        sys.exit(2)
+
+    if deploy_dec.get("decision") == "REJECT":
+        print("🚫 AI Agent rejected this deployment!", file=sys.stderr)
+        sys.exit(3)
+
+    print("✅ AI Agent complete — pipeline may proceed.")
+
+
+if __name__ == "__main__":
+    main()
 ```
 
 ```text
-# app/requirements.txt
-flask==3.0.0
-gunicorn==21.2.0
-pytest==7.4.0
-pytest-cov==4.1.0
-```
-
-### Step 2.2 — Write the Dockerfile
-
-```dockerfile
-# Dockerfile
-FROM python:3.11-slim AS base
-
-# Security: run as non-root user
-RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
-
-WORKDIR /app
-
-# Install dependencies first (layer caching)
-COPY app/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY app/ .
-
-# Change ownership
-RUN chown -R appuser:appgroup /app
-
-USER appuser
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:5000/health || exit 1
-
-EXPOSE 5000
-
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "app:app"]
-```
-
-### Step 2.3 — Docker Compose for Local Testing
-
-```yaml
-# docker-compose.yml
-version: '3.9'
-
-services:
-  app:
-    build: .
-    ports:
-      - "5000:5000"
-    environment:
-      - APP_VERSION=1.0.0
-      - ENVIRONMENT=development
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Optional: local registry for testing
-  registry:
-    image: registry:2
-    ports:
-      - "5001:5000"
-    volumes:
-      - registry-data:/var/lib/registry
-
-volumes:
-  registry-data:
-```
-
-### Step 2.4 — Build and Test Locally
-
-```bash
-# Build the image
-docker build -t workshop-app:latest .
-
-# Run locally
-docker run -p 5000:5000 workshop-app:latest
-
-# Test endpoints
-curl http://localhost:5000/
-curl http://localhost:5000/health
-curl http://localhost:5000/ready
-
-# Run unit tests inside container
-docker run --rm workshop-app:latest pytest tests/ -v
-
-# Inspect image layers
-docker history workshop-app:latest
-
-# Scan for vulnerabilities (optional: install trivy first)
-trivy image workshop-app:latest
+# ai-agent/requirements.txt
+# No external dependencies needed!
+# The agent uses only Python stdlib (urllib, json, pathlib)
+# stdlib is always available in Jenkins agents
 ```
 
 ---
 
-## 5. Lab 3 — Jenkins Pipeline with Docker Build
+## 7. Lab 5 — Connect Ollama to Jenkins
 
-### Step 3.1 — Jenkinsfile (Basic Pipeline)
+### Step 5.1 — Add Jenkins Credentials
+
+Navigate to: **Manage Jenkins → Credentials → System → Global credentials → Add Credentials**
+
+Add this one credential:
+
+| Field | Value |
+|-------|-------|
+| Kind | Secret text |
+| ID | `ollama-host` |
+| Secret | `http://localhost:11434` |
+| Description | Ollama local server URL |
+
+> 💡 If Jenkins and Ollama are on **different machines**, replace `localhost` with the Ollama server IP.
+
+---
+
+### Step 5.2 — Give Jenkins Python Access
+
+```bash
+# On Jenkins server — ensure python3 is available
+which python3
+python3 --version    # must be 3.8+
+
+# If not installed:
+sudo apt install -y python3 python3-pip
+
+# Verify Jenkins user can run python3
+sudo -u jenkins python3 --version
+```
+
+---
+
+### Step 5.3 — Place Agent Script in Your Repo
+
+```bash
+# In your git repository:
+mkdir -p ai-agent
+# Copy ollama_agent.py into ai-agent/
+# Add and commit:
+git add ai-agent/ollama_agent.py
+git commit -m "Add Ollama AI agent for Jenkins pipeline"
+git push
+```
+
+---
+
+### Step 5.4 — Test the Agent Manually (Before Pipeline)
+
+```bash
+# On Jenkins server, in your repo directory:
+export OLLAMA_HOST="http://localhost:11434"
+export OLLAMA_MODEL="llama3.2:3b"
+
+python3 ai-agent/ollama_agent.py \
+  --path ./app \
+  --environment dev \
+  --output ai_report.json
+
+# Check the output:
+cat ai_report.json | python3 -m json.tool
+```
+
+---
+
+## 8. Lab 6 — Full Jenkinsfile with Ollama AI Stages
+
+Create `Jenkinsfile` in your repository root:
 
 ```groovy
-// Jenkinsfile
+// ═══════════════════════════════════════════════════════════════════
+//  Jenkinsfile — CI/CD with Local Ollama AI Agent
+//  Stack  : Jenkins + Docker + Kind (Kubernetes)
+//  AI     : Ollama (100% local, FREE, no API key needed)
+//  Stages : Checkout → Test → Docker → AI Review →
+//           AI Security → AI Decision → K8s Deploy → Smoke Test
+// ═══════════════════════════════════════════════════════════════════
+
 pipeline {
     agent any
 
+    // ── Parameters ────────────────────────────────────────────────
+    parameters {
+        choice(
+            name: 'DEPLOY_ENV',
+            choices: ['dev', 'staging', 'prod'],
+            description: 'Target Kubernetes namespace: workshop-<env>'
+        )
+        choice(
+            name: 'OLLAMA_MODEL',
+            choices: ['llama3.2:3b', 'llama3.2:1b', 'codellama:7b', 'mistral:7b'],
+            description: 'Ollama model to use for AI review'
+        )
+        booleanParam(
+            name: 'SKIP_AI',
+            defaultValue: false,
+            description: 'Skip all AI stages (emergency deploy)'
+        )
+        booleanParam(
+            name: 'SKIP_TESTS',
+            defaultValue: false,
+            description: 'Skip unit tests (emergency only)'
+        )
+        booleanParam(
+            name: 'AI_BLOCK_ON_REJECT',
+            defaultValue: true,
+            description: 'Block pipeline if AI rejects? Uncheck for demo passthrough'
+        )
+    }
+
+    // ── Environment Variables ──────────────────────────────────────
     environment {
-        DOCKER_IMAGE     = "yourdockerhub/workshop-app"
-        DOCKER_TAG       = "${env.BUILD_NUMBER}-${env.GIT_COMMIT[0..7]}"
-        DOCKER_REGISTRY  = "https://index.docker.io/v1/"
+        // 🔧 Change these to match your setup
+        DOCKER_IMAGE  = "your-dockerhub-user/workshop-app"
+        K8S_NAMESPACE = "workshop-${params.DEPLOY_ENV}"
+        DOCKER_TAG    = "${env.BUILD_NUMBER}-${GIT_COMMIT.take(7)}"
+
+        // Ollama settings — pulled from Jenkins credential
+        OLLAMA_MODEL  = "${params.OLLAMA_MODEL}"
     }
 
     options {
-        buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '15'))
+        timeout(time: 60, unit: 'MINUTES')
         timestamps()
+        ansiColor('xterm')
+        skipDefaultCheckout(false)
     }
 
+    // ══════════════════════════════════════════════════════════════
     stages {
 
+        // ─────────────────────────────────────────────────────────
         stage('🔍 Checkout') {
             steps {
                 checkout scm
-                script {
-                    env.GIT_COMMIT_MSG = sh(
-                        script: 'git log -1 --pretty=%B',
-                        returnStdout: true
-                    ).trim()
-                    echo "Commit: ${env.GIT_COMMIT_MSG}"
-                }
+                sh '''
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    echo " Branch : $(git branch --show-current)"
+                    echo " Commit : $(git log -1 --oneline)"
+                    echo " Author : $(git log -1 --format='%an <%ae>')"
+                    echo " Files  : $(git show --stat HEAD | tail -1)"
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                '''
             }
         }
 
+        // ─────────────────────────────────────────────────────────
         stage('🧪 Unit Tests') {
+            when { expression { !params.SKIP_TESTS } }
             steps {
                 sh '''
+                    echo "Running unit tests..."
                     python3 -m venv venv
-                    source venv/bin/activate
-                    pip install -r app/requirements.txt
+                    . venv/bin/activate
+                    pip install -r app/requirements.txt -q
+                    mkdir -p test-results
                     pytest app/tests/ -v \
-                      --junitxml=test-results/results.xml \
-                      --cov=app \
-                      --cov-report=xml:coverage.xml \
-                      --cov-report=html:coverage-html
+                        --junitxml=test-results/results.xml \
+                        --tb=short
+                    echo "✅ Tests complete"
                 '''
             }
             post {
                 always {
-                    junit 'test-results/results.xml'
-                    publishHTML([
-                        reportDir: 'coverage-html',
-                        reportFiles: 'index.html',
-                        reportName: 'Coverage Report'
-                    ])
+                    junit allowEmptyResults: true,
+                          testResults: 'test-results/results.xml'
+                }
+                failure {
+                    echo "❌ Unit tests failed — fix tests before deploying!"
                 }
             }
         }
 
-        stage('🔒 Security Scan') {
-            steps {
-                sh '''
-                    # Install and run bandit (Python security linter)
-                    pip install bandit
-                    bandit -r app/ -f json -o bandit-report.json || true
-                    cat bandit-report.json
-                '''
-            }
-        }
-
-        stage('🐳 Docker Build') {
-            steps {
-                script {
-                    docker.build("${DOCKER_IMAGE}:${DOCKER_TAG}")
-                    docker.build("${DOCKER_IMAGE}:latest")
-                }
-            }
-        }
-
-        stage('🔬 Docker Image Scan') {
-            steps {
-                sh '''
-                    # Scan with Trivy (install separately or use docker)
-                    docker run --rm \
-                      -v /var/run/docker.sock:/var/run/docker.sock \
-                      aquasec/trivy:latest image \
-                      --exit-code 0 \
-                      --severity HIGH,CRITICAL \
-                      ${DOCKER_IMAGE}:${DOCKER_TAG}
-                '''
-            }
-        }
-
-        stage('📤 Docker Push') {
+        // ─────────────────────────────────────────────────────────
+        stage('🐳 Docker Build & Push') {
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'docker-hub-creds',
@@ -466,119 +968,287 @@ pipeline {
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
                     sh '''
-                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                        echo " Building: ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+                        docker build \
+                            --build-arg BUILD_NUMBER=${BUILD_NUMBER} \
+                            --label "git.commit=${GIT_COMMIT}" \
+                            --label "jenkins.build=${BUILD_NUMBER}" \
+                            -t ${DOCKER_IMAGE}:${DOCKER_TAG} \
+                            -t ${DOCKER_IMAGE}:${DEPLOY_ENV}-latest \
+                            .
+
+                        echo "${DOCKER_PASS}" | docker login \
+                            -u "${DOCKER_USER}" --password-stdin
+
                         docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
-                        docker push ${DOCKER_IMAGE}:latest
+                        docker push ${DOCKER_IMAGE}:${DEPLOY_ENV}-latest
+
                         docker logout
+                        echo "✅ Image pushed: ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                    '''
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────
+        // AI STAGES — all run the ollama_agent.py script once,
+        // parse the single ai_report.json for each check
+        // ─────────────────────────────────────────────────────────
+
+        stage('🦙 Ollama AI Analysis') {
+            when { expression { !params.SKIP_AI } }
+            steps {
+                withCredentials([string(
+                    credentialsId: 'ollama-host',
+                    variable: 'OLLAMA_HOST'
+                )]) {
+                    script {
+                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                        echo " 🦙 Running Ollama AI Agent"
+                        echo " Host  : ${env.OLLAMA_HOST}"
+                        echo " Model : ${params.OLLAMA_MODEL}"
+                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+                        // Run the full AI agent (all 3 stages in one call)
+                        def exitCode = sh(
+                            script: """
+                                OLLAMA_HOST=${env.OLLAMA_HOST} \
+                                OLLAMA_MODEL=${params.OLLAMA_MODEL} \
+                                python3 ai-agent/ollama_agent.py \
+                                    --path app/ \
+                                    --environment ${params.DEPLOY_ENV} \
+                                    --output ai_report.json
+                            """,
+                            returnStatus: true
+                        )
+
+                        // Parse the full report
+                        def report = readJSON file: 'ai_report.json'
+
+                        // ── Code Review Results ──────────────────
+                        def score = report.score ?: report.code_review?.score ?: 5
+                        def grade = report.code_review?.grade ?: 'N/A'
+                        echo """
+╔══════════════════════════════════════════╗
+║   📋 CODE REVIEW                         ║
+╠══════════════════════════════════════════╣
+║  Score   : ${score}/10  (Grade: ${grade})
+║  Summary : ${report.summary ?: 'N/A'}
+╚══════════════════════════════════════════╝"""
+
+                        // ── Security Scan Results ────────────────
+                        def risk    = report.risk_level ?: report.security_scan?.risk_level ?: 'UNKNOWN'
+                        def blocked = report.security_scan?.block_deployment ?: false
+                        echo """
+╔══════════════════════════════════════════╗
+║   🔒 SECURITY SCAN                       ║
+╠══════════════════════════════════════════╣
+║  Risk Level : ${risk}
+║  Blocked    : ${blocked}
+║  Secrets    : ${report.security_scan?.secrets_found ?: false}
+╚══════════════════════════════════════════╝"""
+
+                        // ── Deploy Decision Results ──────────────
+                        def decision   = report.decision ?: report.deploy_decision?.decision ?: 'APPROVE'
+                        def confidence = report.deploy_decision?.confidence ?: 'N/A'
+                        def reason     = report.deploy_decision?.reason ?: 'N/A'
+                        echo """
+╔══════════════════════════════════════════╗
+║   🚦 DEPLOY DECISION                     ║
+╠══════════════════════════════════════════╣
+║  Decision   : ${decision}
+║  Confidence : ${confidence}%
+║  Reason     : ${reason?.take(50)}
+╚══════════════════════════════════════════╝"""
+
+                        // ── Gate Logic ───────────────────────────
+                        if (params.AI_BLOCK_ON_REJECT) {
+
+                            // Hard block: CRITICAL security or secrets
+                            if (risk == 'CRITICAL') {
+                                error("🚨 CRITICAL security risk! Deployment blocked by AI.")
+                            }
+                            if (report.security_scan?.secrets_found == true) {
+                                error("🚨 Secrets found in code! Deployment blocked.")
+                            }
+
+                            // Prod-only blocks
+                            if (params.DEPLOY_ENV == 'prod') {
+                                if (risk == 'HIGH') {
+                                    error("🚨 HIGH security risk — production deploy blocked!")
+                                }
+                                if (score < 5) {
+                                    error("❌ Code quality score ${score}/10 too low for production!")
+                                }
+                                if (decision == 'REJECT') {
+                                    error("🚫 AI Agent rejected production deployment!\n${reason}")
+                                }
+                            }
+
+                            // Warnings for non-prod
+                            if (decision == 'REJECT' && params.DEPLOY_ENV != 'prod') {
+                                unstable("⚠️  AI recommends not deploying — proceeding to ${params.DEPLOY_ENV} anyway")
+                            }
+                            if (score < 6) {
+                                unstable("⚠️  Code quality score ${score}/10 — consider fixing before prod")
+                            }
+
+                        } else {
+                            echo "ℹ️  AI_BLOCK_ON_REJECT=false — AI result is advisory only"
+                        }
+                    }
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────
+        stage('🚀 Deploy to Kubernetes') {
+            steps {
+                withCredentials([file(
+                    credentialsId: 'kubeconfig',
+                    variable: 'KUBECONFIG'
+                )]) {
+                    sh '''
+                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                        echo " Deploying to: ${K8S_NAMESPACE}"
+                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+                        # Create namespace if it does not exist
+                        kubectl get namespace ${K8S_NAMESPACE} 2>/dev/null \
+                            || kubectl create namespace ${K8S_NAMESPACE}
+
+                        # Apply all manifests in k8s/
+                        kubectl apply -f k8s/ -n ${K8S_NAMESPACE}
+
+                        # Update the running image to the exact tag we built
+                        kubectl set image deployment/workshop-app \
+                            workshop-app=${DOCKER_IMAGE}:${DOCKER_TAG} \
+                            -n ${K8S_NAMESPACE}
+
+                        # Stamp metadata onto the deployment
+                        kubectl annotate deployment/workshop-app \
+                            jenkins.build="${BUILD_NUMBER}" \
+                            git.commit="${GIT_COMMIT}" \
+                            deployed.at="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                            -n ${K8S_NAMESPACE} --overwrite
+
+                        # Block until rollout completes (or 5m timeout)
+                        kubectl rollout status deployment/workshop-app \
+                            -n ${K8S_NAMESPACE} \
+                            --timeout=5m
+
+                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                        echo " Pods after deploy:"
+                        kubectl get pods -n ${K8S_NAMESPACE} \
+                            -l app=workshop-app \
+                            -o wide
+                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    '''
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────
+        stage('✅ Smoke Tests') {
+            steps {
+                withCredentials([file(
+                    credentialsId: 'kubeconfig',
+                    variable: 'KUBECONFIG'
+                )]) {
+                    sh '''
+                        echo "Running smoke tests against ${K8S_NAMESPACE}..."
+
+                        # Start port-forward in background
+                        kubectl port-forward svc/workshop-app-svc 9977:80 \
+                            -n ${K8S_NAMESPACE} &
+                        PF_PID=$!
+
+                        # Wait for port-forward to be ready
+                        sleep 6
+
+                        FAIL=0
+
+                        # Test 1: Health endpoint
+                        curl -sf http://localhost:9977/health \
+                            && echo "✅ /health → 200 OK" \
+                            || { echo "❌ /health → FAILED"; FAIL=1; }
+
+                        # Test 2: Readiness endpoint
+                        curl -sf http://localhost:9977/ready \
+                            && echo "✅ /ready  → 200 OK" \
+                            || { echo "❌ /ready  → FAILED"; FAIL=1; }
+
+                        # Test 3: Root endpoint
+                        curl -sf http://localhost:9977/ \
+                            && echo "✅ /       → 200 OK" \
+                            || { echo "❌ /       → FAILED"; FAIL=1; }
+
+                        # Cleanup port-forward
+                        kill $PF_PID 2>/dev/null || true
+                        wait  $PF_PID 2>/dev/null || true
+
+                        if [ $FAIL -ne 0 ]; then
+                            echo "❌ Smoke tests failed!"
+                            exit 1
+                        fi
+                        echo "✅ All smoke tests passed!"
                     '''
                 }
             }
         }
 
     }
+    // ══════════════════════════════════════════════════════════════
 
+    // ── Post Actions ──────────────────────────────────────────────
     post {
         success {
-            echo "✅ Pipeline succeeded! Image: ${DOCKER_IMAGE}:${DOCKER_TAG}"
+            echo """
+╔══════════════════════════════════════════════════════╗
+║  ✅  PIPELINE SUCCEEDED                              ║
+╠══════════════════════════════════════════════════════╣
+║  Image     : ${DOCKER_IMAGE}:${DOCKER_TAG}
+║  Namespace : ${K8S_NAMESPACE}
+║  Build     : #${BUILD_NUMBER}
+║  AI Model  : ${params.OLLAMA_MODEL}
+╚══════════════════════════════════════════════════════╝"""
         }
+
         failure {
-            echo "❌ Pipeline failed!"
+            echo "❌ Pipeline failed — triggering auto-rollback..."
+            withCredentials([file(
+                credentialsId: 'kubeconfig',
+                variable: 'KUBECONFIG'
+            )]) {
+                sh '''
+                    kubectl rollout undo deployment/workshop-app \
+                        -n ${K8S_NAMESPACE} 2>/dev/null \
+                        && echo "🔄 Rollback complete" \
+                        || echo "⚠️  Rollback skipped (deploy may not have started)"
+                '''
+            }
         }
+
         always {
+            // Archive the AI report as a Jenkins build artifact
+            archiveArtifacts artifacts: 'ai_report.json',
+                             allowEmptyArchive: true
             cleanWs()
         }
     }
 }
 ```
 
-### Step 3.2 — Create Jenkins Pipeline Job
-
-1. Go to Jenkins dashboard → **New Item**
-2. Enter name: `workshop-pipeline`
-3. Select **Pipeline** → OK
-4. Under **Pipeline** section:
-   - Definition: `Pipeline script from SCM`
-   - SCM: `Git`
-   - Repository URL: your GitHub repo
-   - Credentials: `github-token`
-   - Branch: `*/main`
-   - Script Path: `Jenkinsfile`
-5. Under **Build Triggers**: check `GitHub hook trigger for GITScm polling`
-6. Save and click **Build Now**
-
-### Step 3.3 — Configure GitHub Webhook
-
-In GitHub repo: **Settings → Webhooks → Add webhook**
-
-```
-Payload URL: http://<jenkins-ip>:8080/github-webhook/
-Content type: application/json
-Events: Push events, Pull request events
-```
-
 ---
 
-## 6. Lab 4 — Kubernetes Cluster Setup
+## 9. Lab 7 — Deploy to Kind Kubernetes
 
-### Step 4.1 — Install k3s (Lightweight Kubernetes)
+Since you already have Kind set up, here are the minimal manifests needed:
 
-```bash
-# On control plane node
-curl -sfL https://get.k3s.io | sh -
-
-# Get node token
-sudo cat /var/lib/rancher/k3s/server/node-token
-
-# On each worker node (replace TOKEN and SERVER_IP)
-curl -sfL https://get.k3s.io | K3S_URL=https://<SERVER_IP>:6443 \
-  K3S_TOKEN=<TOKEN> sh -
-
-# Verify cluster
-sudo kubectl get nodes -o wide
-```
-
-### Step 4.2 — Configure kubectl
-
-```bash
-# Copy kubeconfig to local
-mkdir -p ~/.kube
-sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-sudo chown $(id -u):$(id -g) ~/.kube/config
-
-# Or set KUBECONFIG
-export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-
-# Verify
-kubectl cluster-info
-kubectl get nodes
-kubectl get pods -A
-```
-
-### Step 4.3 — Kubernetes Manifests
-
-```yaml
-# k8s/namespace.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: workshop-dev
-  labels:
-    environment: development
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: workshop-staging
-  labels:
-    environment: staging
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: workshop-prod
-  labels:
-    environment: production
-```
+### Step 7.1 — Kubernetes Manifests
 
 ```yaml
 # k8s/deployment.yaml
@@ -586,10 +1256,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: workshop-app
-  namespace: workshop-dev          # parameterized in pipeline
   labels:
     app: workshop-app
-    version: "1.0"
 spec:
   replicas: 2
   selector:
@@ -599,7 +1267,7 @@ spec:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1
-      maxUnavailable: 0            # zero-downtime deployment
+      maxUnavailable: 0
   template:
     metadata:
       labels:
@@ -607,19 +1275,9 @@ spec:
     spec:
       containers:
         - name: workshop-app
-          image: yourdockerhub/workshop-app:latest    # replaced by pipeline
+          image: your-dockerhub-user/workshop-app:latest
           ports:
             - containerPort: 5000
-          env:
-            - name: ENVIRONMENT
-              valueFrom:
-                configMapKeyRef:
-                  name: app-config
-                  key: environment
-            - name: APP_VERSION
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.labels['version']
           resources:
             requests:
               memory: "128Mi"
@@ -631,8 +1289,8 @@ spec:
             httpGet:
               path: /health
               port: 5000
-            initialDelaySeconds: 15
-            periodSeconds: 20
+            initialDelaySeconds: 10
+            periodSeconds: 15
           readinessProbe:
             httpGet:
               path: /ready
@@ -647,7 +1305,6 @@ apiVersion: v1
 kind: Service
 metadata:
   name: workshop-app-svc
-  namespace: workshop-dev
 spec:
   selector:
     app: workshop-app
@@ -656,27 +1313,6 @@ spec:
       port: 80
       targetPort: 5000
   type: ClusterIP
----
-# k8s/hpa.yaml
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: workshop-app-hpa
-  namespace: workshop-dev
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: workshop-app
-  minReplicas: 2
-  maxReplicas: 10
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 70
 ```
 
 ```yaml
@@ -685,940 +1321,255 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: app-config
-  namespace: workshop-dev
 data:
   environment: "development"
   log_level: "INFO"
 ```
 
----
-
-## 7. Lab 5 — Deploying to Kubernetes via Jenkins
-
-### Step 5.1 — Extended Jenkinsfile with K8s Deploy
-
-```groovy
-// Jenkinsfile (extended with K8s deployment stages)
-pipeline {
-    agent any
-
-    parameters {
-        choice(
-            name: 'DEPLOY_ENV',
-            choices: ['dev', 'staging', 'prod'],
-            description: 'Target deployment environment'
-        )
-        booleanParam(
-            name: 'RUN_AI_REVIEW',
-            defaultValue: true,
-            description: 'Enable AI Agent review before deploy'
-        )
-    }
-
-    environment {
-        DOCKER_IMAGE    = "yourdockerhub/workshop-app"
-        DOCKER_TAG      = "${env.BUILD_NUMBER}-${env.GIT_COMMIT[0..7]}"
-        K8S_NAMESPACE   = "workshop-${params.DEPLOY_ENV}"
-        APP_VERSION     = "${env.BUILD_NUMBER}"
-    }
-
-    stages {
-
-        stage('🔍 Checkout') {
-            steps { checkout scm }
-        }
-
-        stage('🧪 Test') {
-            steps {
-                sh '''
-                    python3 -m venv venv
-                    source venv/bin/activate
-                    pip install -r app/requirements.txt
-                    pytest app/tests/ -v --junitxml=test-results/results.xml
-                '''
-            }
-            post {
-                always { junit 'test-results/results.xml' }
-            }
-        }
-
-        stage('🐳 Build & Push') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'docker-hub-creds',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh '''
-                        docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
-                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                        docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
-                        docker logout
-                    '''
-                }
-            }
-        }
-
-        stage('🤖 AI Agent Review') {
-            when {
-                expression { params.RUN_AI_REVIEW == true }
-            }
-            steps {
-                withCredentials([string(
-                    credentialsId: 'anthropic-api-key',
-                    variable: 'ANTHROPIC_API_KEY'
-                )]) {
-                    script {
-                        def aiResult = sh(
-                            script: '''
-                                cd ai-agent
-                                pip install -r requirements.txt -q
-                                python3 agent.py \
-                                  --mode code-review \
-                                  --path ../app/ \
-                                  --output ai-review.json
-                            ''',
-                            returnStdout: true
-                        ).trim()
-
-                        def review = readJSON file: 'ai-agent/ai-review.json'
-                        echo "🤖 AI Review Score: ${review.score}/10"
-                        echo "📋 Summary: ${review.summary}"
-
-                        if (review.score < 6 && params.DEPLOY_ENV == 'prod') {
-                            error("❌ AI Agent blocked production deploy. Score: ${review.score}/10")
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('🚀 Deploy to Kubernetes') {
-            steps {
-                withCredentials([file(
-                    credentialsId: 'kubeconfig',
-                    variable: 'KUBECONFIG'
-                )]) {
-                    sh '''
-                        # Apply namespace
-                        kubectl apply -f k8s/namespace.yaml
-
-                        # Apply configmap
-                        kubectl apply -f k8s/configmap.yaml \
-                          -n ${K8S_NAMESPACE}
-
-                        # Update image in deployment
-                        sed -i "s|yourdockerhub/workshop-app:latest|${DOCKER_IMAGE}:${DOCKER_TAG}|g" \
-                          k8s/deployment.yaml
-
-                        # Apply deployment
-                        kubectl apply -f k8s/deployment.yaml \
-                          -n ${K8S_NAMESPACE}
-
-                        # Apply service and HPA
-                        kubectl apply -f k8s/service.yaml \
-                          -n ${K8S_NAMESPACE}
-                        kubectl apply -f k8s/hpa.yaml \
-                          -n ${K8S_NAMESPACE}
-
-                        # Wait for rollout
-                        kubectl rollout status deployment/workshop-app \
-                          -n ${K8S_NAMESPACE} \
-                          --timeout=5m
-                    '''
-                }
-            }
-        }
-
-        stage('✅ Smoke Tests') {
-            steps {
-                withCredentials([file(
-                    credentialsId: 'kubeconfig',
-                    variable: 'KUBECONFIG'
-                )]) {
-                    sh '''
-                        # Port-forward and test
-                        kubectl port-forward \
-                          svc/workshop-app-svc 8888:80 \
-                          -n ${K8S_NAMESPACE} &
-
-                        sleep 5
-                        curl -f http://localhost:8888/health || \
-                          (echo "❌ Health check failed!" && exit 1)
-                        curl -f http://localhost:8888/ready || \
-                          (echo "❌ Readiness check failed!" && exit 1)
-
-                        echo "✅ Smoke tests passed!"
-                        kill %1 || true
-                    '''
-                }
-            }
-        }
-
-    }
-
-    post {
-        success {
-            echo "🎉 Deployed ${DOCKER_IMAGE}:${DOCKER_TAG} to ${K8S_NAMESPACE}"
-        }
-        failure {
-            withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                sh '''
-                    echo "🔄 Rolling back deployment..."
-                    kubectl rollout undo deployment/workshop-app \
-                      -n ${K8S_NAMESPACE} || true
-                '''
-            }
-        }
-        always {
-            cleanWs()
-        }
-    }
-}
-```
-
-### Step 5.2 — Zero-Downtime Deployment Verification
+### Step 7.2 — Verify Kind Cluster
 
 ```bash
-# Watch rollout in real-time
-kubectl rollout status deployment/workshop-app -n workshop-dev -w
+# Check your Kind cluster
+kind get clusters
+kubectl cluster-info
+kubectl get nodes
 
-# Check revision history
-kubectl rollout history deployment/workshop-app -n workshop-dev
+# Check existing namespaces
+kubectl get namespaces
 
-# Manual rollback if needed
-kubectl rollout undo deployment/workshop-app -n workshop-dev
-kubectl rollout undo deployment/workshop-app -n workshop-dev --to-revision=2
+# Create namespaces manually if not done by pipeline
+kubectl create namespace workshop-dev     2>/dev/null || true
+kubectl create namespace workshop-staging 2>/dev/null || true
+kubectl create namespace workshop-prod    2>/dev/null || true
+```
 
-# View pod logs
-kubectl logs -l app=workshop-app -n workshop-dev --tail=50 -f
+---
 
-# Describe deployment events
+## 10. Lab 8 — Demo Run & Verification
+
+### Step 8.1 — Pre-Demo Checklist
+
+```bash
+# 1. Ollama running?
+curl http://localhost:11434/
+# Expected: "Ollama is running"
+
+# 2. Model pulled?
+ollama list
+# Expected: llama3.2:3b listed
+
+# 3. Jenkins running?
+curl http://localhost:8080/
+# Expected: Jenkins login page
+
+# 4. Kind cluster up?
+kubectl get nodes
+# Expected: control-plane + worker nodes Ready
+
+# 5. Docker running?
+docker ps
+# Expected: docker daemon responding
+
+# 6. Test AI agent manually
+cd /path/to/your/repo
+python3 ai-agent/ollama_agent.py \
+  --path ./app \
+  --environment dev \
+  --output test_report.json
+
+cat test_report.json | python3 -m json.tool
+```
+
+### Step 8.2 — Run the Pipeline
+
+1. Open Jenkins: `http://localhost:8080`
+2. Open your pipeline job
+3. Click **"Build with Parameters"**
+4. Select:
+   - `DEPLOY_ENV`: `dev`
+   - `OLLAMA_MODEL`: `llama3.2:3b`
+   - `AI_BLOCK_ON_REJECT`: ✅ checked
+5. Click **Build**
+6. Click the build number → **Console Output**
+7. Watch the AI stages in real time!
+
+### Step 8.3 — Verify Deployment
+
+```bash
+# Watch pods come up
+kubectl get pods -n workshop-dev -w
+
+# Check deployment status
 kubectl describe deployment workshop-app -n workshop-dev
+
+# Test the running app
+kubectl port-forward svc/workshop-app-svc 8888:80 -n workshop-dev &
+curl http://localhost:8888/health
+curl http://localhost:8888/
+
+# View AI report artifact in Jenkins
+# Jenkins → Build → Artifacts → ai_report.json
 ```
 
----
+### Step 8.4 — Demo: Force AI Rejection
 
-## 8. Lab 6 — AI Agent Integration
-
-### Step 6.1 — AI Agent Architecture
-
-The AI Agent acts as an intelligent gate in the pipeline with three responsibilities:
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                     AI Agent Layer                       │
-│                                                          │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────┐ │
-│  │   Code Review   │  │  Security Scan  │  │ Deploy  │ │
-│  │                 │  │                 │  │ Guard   │ │
-│  │ • Code quality  │  │ • Vuln patterns │  │         │ │
-│  │ • Best practice │  │ • Secret leaks  │  │ Risk    │ │
-│  │ • Complexity    │  │ • OWASP top 10  │  │ Score   │ │
-│  │ • Suggestions   │  │ • CVE lookup    │  │ GO/NOGO │ │
-│  └────────┬────────┘  └────────┬────────┘  └────┬────┘ │
-│           │                    │                 │       │
-│           └────────────────────┴─────────────────┘       │
-│                               │                           │
-│                        ┌──────▼──────┐                   │
-│                        │   Report    │                   │
-│                        │  Generator  │                   │
-│                        └─────────────┘                   │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Step 6.2 — AI Agent Python Script
-
-```python
-# ai-agent/agent.py
-import os
-import sys
-import json
-import argparse
-import anthropic
-from pathlib import Path
-
-def read_code_files(path: str) -> str:
-    """Read all Python files from the given path."""
-    code_content = []
-    for py_file in Path(path).rglob("*.py"):
-        if "__pycache__" in str(py_file):
-            continue
-        content = py_file.read_text()
-        code_content.append(f"### File: {py_file}\n```python\n{content}\n```")
-    return "\n\n".join(code_content)
-
-
-def run_code_review(code_path: str, client: anthropic.Anthropic) -> dict:
-    """Use Claude to review code quality."""
-    code = read_code_files(code_path)
-
-    prompt = f"""You are a senior software engineer conducting a code review.
-
-Analyze the following Python code and provide:
-1. A quality score from 1-10
-2. Critical issues (blocking)
-3. Major issues (should fix)
-4. Minor suggestions
-5. A brief summary
-
-Return ONLY valid JSON in this exact format:
-{{
-    "score": <number>,
-    "critical_issues": ["<issue1>", ...],
-    "major_issues": ["<issue1>", ...],
-    "suggestions": ["<suggestion1>", ...],
-    "summary": "<brief summary>",
-    "approved": <true/false>
-}}
-
-Code to review:
-{code}
-"""
-
-    message = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=2000,
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    response_text = message.content[0].text
-    return json.loads(response_text)
-
-
-def run_security_scan(code_path: str, client: anthropic.Anthropic) -> dict:
-    """Use Claude to identify security vulnerabilities."""
-    code = read_code_files(code_path)
-
-    prompt = f"""You are a security expert performing a security audit.
-
-Analyze the following Python code for security vulnerabilities including:
-- SQL injection, XSS, command injection
-- Hardcoded secrets or credentials
-- Insecure deserialization
-- Improper error handling that exposes internals
-- OWASP Top 10 vulnerabilities
-- Insecure dependencies usage
-
-Return ONLY valid JSON in this exact format:
-{{
-    "risk_level": "<LOW|MEDIUM|HIGH|CRITICAL>",
-    "vulnerabilities": [
-        {{
-            "type": "<vulnerability type>",
-            "severity": "<LOW|MEDIUM|HIGH|CRITICAL>",
-            "file": "<filename>",
-            "description": "<description>",
-            "recommendation": "<how to fix>"
-        }}
-    ],
-    "secrets_found": <true/false>,
-    "summary": "<brief summary>",
-    "block_deployment": <true/false>
-}}
-
-Code to scan:
-{code}
-"""
-
-    message = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=2000,
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    response_text = message.content[0].text
-    return json.loads(response_text)
-
-
-def run_deploy_decision(
-    code_review: dict,
-    security_scan: dict,
-    environment: str,
-    client: anthropic.Anthropic
-) -> dict:
-    """AI makes final deployment decision."""
-
-    prompt = f"""You are a DevOps lead making deployment approval decisions.
-
-Environment: {environment}
-
-Code Review Results:
-{json.dumps(code_review, indent=2)}
-
-Security Scan Results:
-{json.dumps(security_scan, indent=2)}
-
-Based on the above, make a deployment decision for the '{environment}' environment.
-Be strict for production, lenient for development.
-
-Return ONLY valid JSON:
-{{
-    "decision": "<APPROVE|REJECT|APPROVE_WITH_CONDITIONS>",
-    "confidence": <0-100>,
-    "reason": "<explanation>",
-    "conditions": ["<condition if any>"],
-    "risk_assessment": "<LOW|MEDIUM|HIGH>",
-    "recommended_actions": ["<action1>", ...]
-}}
-"""
-
-    message = client.messages.create(
-        model="claude-opus-4-5",
-        max_tokens=1000,
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    response_text = message.content[0].text
-    return json.loads(response_text)
-
-
-def main():
-    parser = argparse.ArgumentParser(description='AI Agent for CI/CD Pipeline')
-    parser.add_argument('--mode', choices=['code-review', 'security', 'deploy-decision', 'full'],
-                        required=True, help='Operation mode')
-    parser.add_argument('--path', default='../app/', help='Path to code')
-    parser.add_argument('--environment', default='dev', help='Target environment')
-    parser.add_argument('--output', default='ai-report.json', help='Output file')
-    args = parser.parse_args()
-
-    api_key = os.environ.get('ANTHROPIC_API_KEY')
-    if not api_key:
-        print("❌ ANTHROPIC_API_KEY not set", file=sys.stderr)
-        sys.exit(1)
-
-    client = anthropic.Anthropic(api_key=api_key)
-    results = {}
-
-    print(f"🤖 AI Agent starting in '{args.mode}' mode...")
-
-    if args.mode in ['code-review', 'full']:
-        print("📋 Running code review...")
-        results['code_review'] = run_code_review(args.path, client)
-        print(f"   Score: {results['code_review']['score']}/10")
-
-    if args.mode in ['security', 'full']:
-        print("🔒 Running security scan...")
-        results['security_scan'] = run_security_scan(args.path, client)
-        print(f"   Risk Level: {results['security_scan']['risk_level']}")
-
-    if args.mode in ['deploy-decision', 'full'] and len(results) >= 2:
-        print("🚦 Making deployment decision...")
-        results['deploy_decision'] = run_deploy_decision(
-            results.get('code_review', {}),
-            results.get('security_scan', {}),
-            args.environment,
-            client
-        )
-        print(f"   Decision: {results['deploy_decision']['decision']}")
-
-    # Combine into final output
-    final_output = {
-        **results.get('code_review', {}),
-        **results,
-        "score": results.get('code_review', {}).get('score', 5),
-        "summary": results.get('code_review', {}).get('summary', 'Review complete')
-    }
-
-    output_path = f"ai-agent/{args.output}"
-    with open(output_path, 'w') as f:
-        json.dump(final_output, f, indent=2)
-
-    print(f"✅ AI Agent report saved to {output_path}")
-
-    # Exit with error if deployment should be blocked
-    if results.get('security_scan', {}).get('block_deployment', False):
-        print("🚨 Security scan recommends blocking deployment!", file=sys.stderr)
-        sys.exit(2)
-
-    decision = results.get('deploy_decision', {}).get('decision', 'APPROVE')
-    if decision == 'REJECT':
-        print("🚫 AI Agent rejected this deployment!", file=sys.stderr)
-        sys.exit(3)
-
-
-if __name__ == '__main__':
-    main()
-```
-
-```text
-# ai-agent/requirements.txt
-anthropic>=0.25.0
-```
-
-### Step 6.3 — Test the AI Agent Locally
+To demonstrate the AI blocking a bad deployment for your audience:
 
 ```bash
-cd ai-agent
+# Add a "bad" file to trigger AI security concern
+cat >> app/app.py << 'EOF'
 
-# Install dependencies
-pip install -r requirements.txt
+# BAD PRACTICE — for demo purposes
+DB_PASSWORD = "admin123"
+SECRET_KEY  = "hardcoded-secret-do-not-do-this"
+EOF
 
-# Set API key
-export ANTHROPIC_API_KEY="your-api-key-here"
-
-# Run code review
-python3 agent.py --mode code-review --path ../app/ --output review.json
-cat review.json | python3 -m json.tool
-
-# Run security scan
-python3 agent.py --mode security --path ../app/ --output security.json
-cat security.json | python3 -m json.tool
-
-# Run full analysis
-python3 agent.py --mode full --path ../app/ --environment prod --output full-report.json
+git add app/app.py
+git commit -m "demo: introduce security issues"
+git push
 ```
+
+Then run the pipeline again with:
+- `DEPLOY_ENV`: `prod`
+- `AI_BLOCK_ON_REJECT`: ✅ checked
+
+The AI should detect the hardcoded secrets and block the production deployment! 🎯
 
 ---
 
-## 9. Lab 7 — Full End-to-End AI-Powered Pipeline
+## 11. Troubleshooting
 
-### Step 7.1 — Complete Production Jenkinsfile
-
-```groovy
-// Jenkinsfile.production
-pipeline {
-    agent { label 'docker-agent' }
-
-    parameters {
-        choice(name: 'DEPLOY_ENV',
-               choices: ['dev', 'staging', 'prod'],
-               description: 'Deployment target')
-        booleanParam(name: 'AI_REVIEW',    defaultValue: true,  description: 'Run AI Agent review')
-        booleanParam(name: 'AI_SECURITY',  defaultValue: true,  description: 'Run AI security scan')
-        booleanParam(name: 'SKIP_TESTS',   defaultValue: false, description: 'Skip tests (emergency only)')
-        string(name: 'ROLLBACK_VERSION',   defaultValue: '',    description: 'Rollback to this version (leave blank for new deploy)')
-    }
-
-    environment {
-        DOCKER_IMAGE   = credentials('docker-image-name')
-        DOCKER_TAG     = "${env.BUILD_NUMBER}-${GIT_COMMIT[0..7]}"
-        K8S_NAMESPACE  = "workshop-${params.DEPLOY_ENV}"
-        SLACK_CHANNEL  = '#deployments'
-        BUILD_URL_SAFE = "${env.BUILD_URL}"
-    }
-
-    options {
-        buildDiscarder(logRotator(numToKeepStr: '20'))
-        timeout(time: 45, unit: 'MINUTES')
-        timestamps()
-        ansiColor('xterm')
-    }
-
-    stages {
-
-        // ──────────────────────────────────────────────
-        stage('🔄 Rollback?') {
-            when {
-                expression { params.ROLLBACK_VERSION != '' }
-            }
-            steps {
-                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    sh """
-                        echo "⏪ Rolling back to version ${params.ROLLBACK_VERSION}..."
-                        kubectl set image deployment/workshop-app \
-                          workshop-app=${DOCKER_IMAGE}:${params.ROLLBACK_VERSION} \
-                          -n ${K8S_NAMESPACE}
-                        kubectl rollout status deployment/workshop-app \
-                          -n ${K8S_NAMESPACE} --timeout=5m
-                        echo "✅ Rollback complete"
-                    """
-                }
-            }
-        }
-
-        // ──────────────────────────────────────────────
-        stage('🔍 Checkout & Validate') {
-            when { expression { params.ROLLBACK_VERSION == '' } }
-            steps {
-                checkout scm
-                sh '''
-                    echo "Branch: $(git branch --show-current)"
-                    echo "Commit: $(git log -1 --oneline)"
-                    echo "Author: $(git log -1 --format='%an <%ae>')"
-                    echo "Files changed: $(git diff --name-only HEAD~1 HEAD | wc -l)"
-                '''
-            }
-        }
-
-        // ──────────────────────────────────────────────
-        stage('🧪 Tests & Coverage') {
-            when {
-                allOf {
-                    expression { params.ROLLBACK_VERSION == '' }
-                    expression { params.SKIP_TESTS == false }
-                }
-            }
-            parallel {
-                stage('Unit Tests') {
-                    steps {
-                        sh '''
-                            python3 -m venv venv
-                            . venv/bin/activate
-                            pip install -r app/requirements.txt -q
-                            pytest app/tests/ -v \
-                              --junitxml=results/unit.xml \
-                              --cov=app \
-                              --cov-report=xml:results/coverage.xml \
-                              --cov-fail-under=70
-                        '''
-                    }
-                }
-                stage('Lint') {
-                    steps {
-                        sh '''
-                            pip install flake8 pylint -q
-                            flake8 app/ --max-line-length=120 \
-                              --format=pylint > results/flake8.txt || true
-                            pylint app/*.py --output-format=json \
-                              > results/pylint.json || true
-                        '''
-                    }
-                }
-            }
-            post {
-                always {
-                    junit 'results/unit.xml'
-                }
-            }
-        }
-
-        // ──────────────────────────────────────────────
-        stage('🤖 AI Code Review') {
-            when {
-                allOf {
-                    expression { params.ROLLBACK_VERSION == '' }
-                    expression { params.AI_REVIEW == true }
-                }
-            }
-            steps {
-                withCredentials([string(credentialsId: 'anthropic-api-key',
-                                       variable: 'ANTHROPIC_API_KEY')]) {
-                    script {
-                        sh '''
-                            pip install anthropic -q
-                            python3 ai-agent/agent.py \
-                              --mode code-review \
-                              --path app/ \
-                              --output review.json
-                        '''
-
-                        def review = readJSON file: 'ai-agent/review.json'
-                        env.AI_SCORE = "${review.score}"
-
-                        echo "╔══════════════════════════════════╗"
-                        echo "║      AI Code Review Results      ║"
-                        echo "╠══════════════════════════════════╣"
-                        echo "║ Score: ${review.score}/10                  ║"
-                        echo "║ Summary: ${review.summary}"
-                        echo "╚══════════════════════════════════╝"
-
-                        if (review.critical_issues?.size() > 0) {
-                            echo "⚠️  Critical Issues Found:"
-                            review.critical_issues.each { echo "   - ${it}" }
-                        }
-
-                        if (review.score < 5 && params.DEPLOY_ENV == 'prod') {
-                            error("AI Agent: Code quality score ${review.score}/10 too low for production")
-                        }
-                    }
-                }
-            }
-        }
-
-        // ──────────────────────────────────────────────
-        stage('🔒 AI Security Scan') {
-            when {
-                allOf {
-                    expression { params.ROLLBACK_VERSION == '' }
-                    expression { params.AI_SECURITY == true }
-                }
-            }
-            steps {
-                withCredentials([string(credentialsId: 'anthropic-api-key',
-                                       variable: 'ANTHROPIC_API_KEY')]) {
-                    script {
-                        def exitCode = sh(
-                            script: '''
-                                python3 ai-agent/agent.py \
-                                  --mode security \
-                                  --path app/ \
-                                  --output security.json
-                            ''',
-                            returnStatus: true
-                        )
-
-                        def scan = readJSON file: 'ai-agent/security.json'
-                        echo "🔒 Security Risk Level: ${scan.risk_level}"
-
-                        if (scan.risk_level == 'CRITICAL') {
-                            error("🚨 CRITICAL security vulnerabilities found. Deployment blocked!")
-                        }
-                        if (scan.risk_level == 'HIGH' && params.DEPLOY_ENV == 'prod') {
-                            error("🚨 HIGH risk vulnerabilities found. Production deployment blocked!")
-                        }
-                    }
-                }
-            }
-        }
-
-        // ──────────────────────────────────────────────
-        stage('🐳 Build & Push Image') {
-            when { expression { params.ROLLBACK_VERSION == '' } }
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'docker-hub-creds',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh '''
-                        echo "🐳 Building Docker image..."
-                        docker build \
-                          --build-arg APP_VERSION=${DOCKER_TAG} \
-                          --label "jenkins.build=${BUILD_NUMBER}" \
-                          --label "git.commit=${GIT_COMMIT}" \
-                          -t ${DOCKER_IMAGE}:${DOCKER_TAG} \
-                          -t ${DOCKER_IMAGE}:${DEPLOY_ENV}-latest \
-                          .
-
-                        echo "📤 Pushing to registry..."
-                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                        docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
-                        docker push ${DOCKER_IMAGE}:${DEPLOY_ENV}-latest
-                        docker logout
-                        echo "✅ Image pushed: ${DOCKER_IMAGE}:${DOCKER_TAG}"
-                    '''
-                }
-            }
-        }
-
-        // ──────────────────────────────────────────────
-        stage('🚦 AI Deploy Decision') {
-            when {
-                allOf {
-                    expression { params.ROLLBACK_VERSION == '' }
-                    expression { params.AI_REVIEW == true }
-                    expression { params.DEPLOY_ENV == 'prod' }
-                }
-            }
-            steps {
-                withCredentials([string(credentialsId: 'anthropic-api-key',
-                                       variable: 'ANTHROPIC_API_KEY')]) {
-                    script {
-                        sh '''
-                            python3 ai-agent/agent.py \
-                              --mode deploy-decision \
-                              --environment prod \
-                              --output decision.json
-                        '''
-
-                        def decision = readJSON file: 'ai-agent/decision.json'
-                        echo "🤖 AI Deploy Decision: ${decision.decision}"
-                        echo "📊 Confidence: ${decision.confidence}%"
-                        echo "📝 Reason: ${decision.reason}"
-
-                        if (decision.decision == 'REJECT') {
-                            error("AI Agent rejected production deployment: ${decision.reason}")
-                        }
-
-                        if (decision.decision == 'APPROVE_WITH_CONDITIONS') {
-                            echo "⚠️  Approved with conditions:"
-                            decision.conditions.each { echo "   • ${it}" }
-                        }
-                    }
-                }
-            }
-        }
-
-        // ──────────────────────────────────────────────
-        stage('🚀 Deploy to Kubernetes') {
-            when { expression { params.ROLLBACK_VERSION == '' } }
-            steps {
-                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    sh '''
-                        echo "🚀 Deploying to ${K8S_NAMESPACE}..."
-
-                        # Apply all manifests
-                        kubectl apply -f k8s/ -n ${K8S_NAMESPACE}
-
-                        # Update deployment image
-                        kubectl set image deployment/workshop-app \
-                          workshop-app=${DOCKER_IMAGE}:${DOCKER_TAG} \
-                          -n ${K8S_NAMESPACE}
-
-                        # Annotate with build info
-                        kubectl annotate deployment/workshop-app \
-                          jenkins.build="${BUILD_NUMBER}" \
-                          git.commit="${GIT_COMMIT}" \
-                          deployed.at="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-                          -n ${K8S_NAMESPACE} \
-                          --overwrite
-
-                        # Wait for rollout
-                        kubectl rollout status deployment/workshop-app \
-                          -n ${K8S_NAMESPACE} \
-                          --timeout=10m
-
-                        echo "✅ Deployment complete!"
-                        kubectl get pods -n ${K8S_NAMESPACE} -l app=workshop-app
-                    '''
-                }
-            }
-        }
-
-        // ──────────────────────────────────────────────
-        stage('✅ Smoke & Integration Tests') {
-            steps {
-                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    sh '''
-                        kubectl port-forward svc/workshop-app-svc 9999:80 \
-                          -n ${K8S_NAMESPACE} &
-                        PF_PID=$!
-                        sleep 5
-
-                        echo "Running smoke tests..."
-                        curl -sf http://localhost:9999/health && echo "✅ Health OK"
-                        curl -sf http://localhost:9999/ready  && echo "✅ Ready OK"
-                        curl -sf http://localhost:9999/       && echo "✅ App OK"
-
-                        kill $PF_PID || true
-                        echo "✅ All smoke tests passed!"
-                    '''
-                }
-            }
-        }
-
-    }
-
-    // ──────────────────────────────────────────────
-    post {
-        success {
-            echo """
-            ╔═══════════════════════════════════════════╗
-            ║   ✅  DEPLOYMENT SUCCESSFUL               ║
-            ║   Image:  ${DOCKER_IMAGE}:${DOCKER_TAG}
-            ║   Target: ${K8S_NAMESPACE}
-            ║   Build:  #${BUILD_NUMBER}
-            ╚═══════════════════════════════════════════╝
-            """
-        }
-        failure {
-            echo "❌ Pipeline failed — initiating auto-rollback..."
-            withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                sh '''
-                    kubectl rollout undo deployment/workshop-app \
-                      -n ${K8S_NAMESPACE} || true
-                    echo "🔄 Rollback complete"
-                '''
-            }
-        }
-        always {
-            archiveArtifacts artifacts: 'ai-agent/*.json,results/*.xml', allowEmptyArchive: true
-            cleanWs()
-        }
-    }
-}
-```
-
----
-
-## 10. Troubleshooting & Reference
-
-### 🔧 Common Issues & Fixes
-
-| Issue | Symptom | Fix |
-|-------|---------|-----|
-| Docker permission denied | `Got permission denied while trying to connect to the Docker daemon` | `sudo usermod -aG docker jenkins && sudo systemctl restart jenkins` |
-| kubeconfig not found | `error: stat kubeconfig: no such file` | Re-upload kubeconfig credential in Jenkins |
-| Image pull error | `ErrImagePull` in K8s | Check Docker Hub credentials and image name |
-| AI Agent timeout | Python script hangs | Add `--timeout 60` to API calls |
-| Webhook not triggering | Pipeline not starting on push | Check GitHub webhook delivery log |
-| Port-forward fails | `bind: address already in use` | Kill existing: `pkill -f "kubectl port-forward"` |
-
-### 📊 Useful kubectl Commands
+### ❌ "Cannot reach Ollama" in Jenkins
 
 ```bash
-# Cluster overview
-kubectl get nodes -o wide
-kubectl top nodes
-kubectl top pods -n workshop-dev
+# Check if Ollama is running
+sudo systemctl status ollama
 
-# Deployment management
-kubectl get deployments -n workshop-dev
-kubectl get pods -n workshop-dev -o wide
+# Start it
+sudo systemctl start ollama
+
+# If Jenkins is in Docker, use host IP not localhost
+# Find host IP:
+ip route | grep docker | awk '{print $9}'
+# Use that IP in the Jenkins credential, e.g.: http://172.17.0.1:11434
+
+# Or allow Ollama on all interfaces:
+sudo OLLAMA_HOST=0.0.0.0 ollama serve
+```
+
+### ❌ "Model not found" error
+
+```bash
+# Pull the model
+ollama pull llama3.2:3b
+
+# Verify it downloaded
+ollama list
+
+# Check disk space (models need ~2-4 GB)
+df -h
+```
+
+### ❌ AI response not valid JSON
+
+The model sometimes adds conversational text around JSON. The agent handles this with `safe_parse_json()`. If you still see issues:
+
+```bash
+# Switch to a more instruction-following model
+ollama pull mistral:7b
+
+# Then set in Jenkins parameter or:
+export OLLAMA_MODEL=mistral:7b
+python3 ai-agent/ollama_agent.py --path ./app
+```
+
+### ❌ Ollama is slow (taking 60+ seconds)
+
+```bash
+# Check if GPU is being used
+ollama ps   # shows GPU/CPU usage
+
+# Use a smaller model for faster demo
+ollama pull llama3.2:1b   # ~1 GB, much faster on CPU
+
+# Or increase timeout in ollama_agent.py:
+# Change: timeout=120 → timeout=300
+```
+
+### ❌ kubectl rollout timeout
+
+```bash
+# Check why pods are not starting
+kubectl describe pods -n workshop-dev
 kubectl get events -n workshop-dev --sort-by='.lastTimestamp'
 
-# Debugging
-kubectl logs -l app=workshop-app -n workshop-dev --tail=100
-kubectl exec -it <pod-name> -n workshop-dev -- /bin/sh
-kubectl describe pod <pod-name> -n workshop-dev
-
-# Resource usage
-kubectl get hpa -n workshop-dev
-kubectl describe hpa workshop-app-hpa -n workshop-dev
+# Common: image pull failed — check Docker Hub credentials
+kubectl get pods -n workshop-dev
+kubectl logs <pod-name> -n workshop-dev
 ```
 
-### 🔐 Security Checklist
+### ❌ Port-forward fails in smoke tests
 
-```
-✅ Never hardcode secrets in Jenkinsfile or Dockerfile
-✅ Use Jenkins Credentials for all sensitive values
-✅ Kubernetes RBAC: give Jenkins service account minimal permissions
-✅ Scan Docker images before pushing (Trivy)
-✅ Enable Pod Security Admission in Kubernetes
-✅ Use non-root users in Docker containers
-✅ Rotate API keys regularly
-✅ Enable audit logging in Jenkins
-✅ Use signed commits (GPG)
-✅ Set resource limits on all K8s containers
-```
+```bash
+# Kill existing port-forwards
+pkill -f "kubectl port-forward" || true
 
-### 📈 Pipeline Best Practices
+# Check if service exists
+kubectl get svc -n workshop-dev
 
-```
-✅ Use declarative pipeline syntax (not scripted)
-✅ Always use `cleanWs()` in post block
-✅ Set pipeline-level timeouts
-✅ Archive artifacts for debugging
-✅ Use parallel stages where possible
-✅ Tag images with build number + git SHA (never just "latest" in prod)
-✅ Always wait for rollout status before smoke tests
-✅ Implement automatic rollback on failure
-✅ Keep secrets out of pipeline logs
-✅ Use Blue Ocean for visual pipeline debugging
-```
-
-### 🧩 Workshop Exercise Checklist
-
-```
-□ Lab 1: Jenkins installed and accessible at :8080
-□ Lab 1: All plugins installed and Docker access configured
-□ Lab 2: Flask app builds and runs locally
-□ Lab 2: Docker image passes health check
-□ Lab 3: Jenkins pipeline triggers on git push
-□ Lab 3: Docker image pushed to registry
-□ Lab 4: k3s cluster shows all nodes Ready
-□ Lab 4: kubectl works from Jenkins server
-□ Lab 5: Application deployed to workshop-dev namespace
-□ Lab 5: Smoke tests pass
-□ Lab 6: AI Agent produces review.json
-□ Lab 6: Security scan outputs risk level
-□ Lab 7: Full pipeline runs end-to-end
-□ Lab 7: Auto-rollback tested by introducing a bug
+# Try a different port
+kubectl port-forward svc/workshop-app-svc 9876:80 -n workshop-dev
+curl http://localhost:9876/health
 ```
 
 ---
 
-## 📚 Additional Resources
+## 📊 Quick Reference Card
 
-- [Jenkins Official Documentation](https://www.jenkins.io/doc/)
-- [Kubernetes Documentation](https://kubernetes.io/docs/)
-- [Docker Best Practices](https://docs.docker.com/develop/develop-images/dockerfile_best-practices/)
-- [Anthropic API Reference](https://docs.anthropic.com/)
-- [k3s Quick Start](https://docs.k3s.io/)
-- [Trivy Vulnerability Scanner](https://trivy.dev/)
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    OLLAMA COMMANDS                                │
+├──────────────────────────────────────────────────────────────────┤
+│  ollama serve              → Start Ollama server                 │
+│  ollama pull llama3.2:3b   → Download model                      │
+│  ollama list               → Show downloaded models              │
+│  ollama run llama3.2:3b    → Interactive chat                    │
+│  ollama ps                 → Show running models + GPU/CPU       │
+│  ollama rm llama3.2:3b     → Delete a model                      │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│                    MODEL RECOMMENDATIONS                          │
+├────────────────┬──────────┬──────────┬───────────────────────────┤
+│  Model         │  Size    │  RAM     │  Best For                 │
+├────────────────┼──────────┼──────────┼───────────────────────────┤
+│  llama3.2:1b   │  1.3 GB  │  4 GB+   │  Fast demo, low RAM       │
+│  llama3.2:3b   │  2.0 GB  │  8 GB+   │  ✅ Workshop default      │
+│  mistral:7b    │  4.1 GB  │  8 GB+   │  Better JSON quality      │
+│  codellama:7b  │  3.8 GB  │  8 GB+   │  Best for code review     │
+└────────────────┴──────────┴──────────┴───────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│                    AI AGENT EXIT CODES                            │
+├──────────────────────────────────────────────────────────────────┤
+│  0 → Success — pipeline proceeds                                 │
+│  2 → Security scan blocked deployment                            │
+│  3 → AI deploy decision = REJECT                                 │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│                    JENKINS CREDENTIALS NEEDED                     │
+├────────────────────┬─────────────────┬────────────────────────────┤
+│  ID                │  Type           │  Value                     │
+├────────────────────┼─────────────────┼────────────────────────────┤
+│  ollama-host       │  Secret text    │  http://localhost:11434    │
+│  docker-hub-creds  │  User/Password  │  Docker Hub login          │
+│  kubeconfig        │  Secret file    │  ~/.kube/config            │
+└────────────────────┴─────────────────┴────────────────────────────┘
+```
 
 ---
 
-*Workshop Guide v1.0 — Jenkins CI/CD + Docker + Kubernetes + AI Agent*  
-*Estimated Duration: 6–8 hours (full workshop) | 2–3 hours (condensed)*
+*Workshop Guide — Jenkins + Ollama Local AI Agent*
+*100% Free | No API Keys | Runs Fully Offline*
+*Estimated Duration: 3–4 hours*
