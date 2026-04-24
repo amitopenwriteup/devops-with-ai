@@ -1,9 +1,9 @@
-# ☸️ KubeKind Assistant — Full Beginner Setup Guide
+#  KubeKind Assistant — Full Beginner Setup Guide
 ### *Step-by-step: Build an AI Agent for Kubernetes kind Clusters in Copilot Studio*
 
 ---
 
-## 📋 What You Will Build
+##  What You Will Build
 
 A **Copilot Studio AI Agent** called `KubeKind Assistant` that helps you:
 
@@ -13,7 +13,7 @@ A **Copilot Studio AI Agent** called `KubeKind Assistant` that helps you:
 - Debug crashed pods and errors
 - Safely delete clusters
 
-> 💡 **You do NOT need coding experience.** Every click, every field, every paste is shown below.
+>  **You do NOT need coding experience.** Every click, every field, every paste is shown below.
 
 ---
 
@@ -40,11 +40,11 @@ Each Topic follows this **same 3-node pattern**:
 
 ---
 
-## 🏁 PART 0 — Create the Agent
+##  PART 0 — Create the Agent
 
 ### Step 0.1 — Open Copilot Studio
 
-1. Go to 👉 [https://copilotstudio.microsoft.com](https://copilotstudio.microsoft.com)
+1. Go to  [https://copilotstudio.microsoft.com](https://copilotstudio.microsoft.com)
 2. Sign in with your **free Microsoft account** (Outlook / Hotmail)
 3. You will see: *"What would you like to build?"*
 
@@ -84,7 +84,7 @@ Never:
 - Skip the verify step
 ```
 
-4. Click **Save** (top right) 💾
+4. Click **Save** (top right) 
 
 ---
 
@@ -225,7 +225,7 @@ Rules:
 - Wrap all commands in code blocks with # comments
 ```
 
-6. Click **Save** (top right) 💾
+6. Click **Save** (top right) 
 
 ---
 
@@ -236,11 +236,11 @@ In the **"Test your agent"** panel on the right side, type:
 Install kind on Linux
 ```
 
-✅ Expected: Step-by-step install commands with code blocks
+ Expected: Step-by-step install commands with code blocks
 
 ---
 
-### 📦 Topic 1 Complete — Generated Output Examples
+###  Topic 1 Complete — Generated Output Examples
 
 #### Linux Install Commands (Agent Output):
 
@@ -299,7 +299,7 @@ kubectl version --client
 
 ---
 
-## 📂 PART 2 — Topic 2: Create Cluster
+## PART 2 — Topic 2: Create Cluster
 
 ### What this topic does:
 User asks to create a cluster → Agent asks what type → Generates kind-config.yaml + commands
@@ -374,8 +374,8 @@ Click **`+`** → **`Advanced`** → **`Generative answers`**
 
 **Data Sources → Edit:**
 ```
-Web search          🔵 ON
-General knowledge   🔵 ON
+Web search           ON
+General knowledge    ON
 ```
 
 **Customize your prompt (paste into 0/8000 box):**
@@ -465,7 +465,7 @@ kubectl config use-context kind-my-cluster
 
 ---
 
-## 📂 PART 3 — Topic 3: Deploy Application
+##  PART 3 — Topic 3: Deploy Application
 
 ### What this topic does:
 User wants to deploy an app → Agent asks what type → Generates Kubernetes YAML manifests
@@ -545,11 +545,11 @@ Add # comments on every YAML field explaining what it does.
 Mention the kind-specific step: imagePullPolicy: Never for local images.
 ```
 
-Click **Save** 💾
+Click **Save** 
 
 ---
 
-### 📦 Topic 3 Complete — Generated Output Example
+###  Topic 3 Complete — Generated Output Example
 
 ```bash
 # ── Step 1: Load your image into kind ─────────────────────
@@ -704,8 +704,8 @@ Click **`+`** → **`Advanced`** → **`Generative answers`**
 
 **Data Sources → Edit:**
 ```
-Web search          🔵 ON
-General knowledge   🔵 ON
+Web search          ON
+General knowledge   ON
 ```
 
 **Customize your prompt (paste into 0/8000 box):**
@@ -734,13 +734,13 @@ Format with markdown headers. All commands in code blocks.
 Focus on kind-specific causes (image loading, port mapping, Docker memory).
 ```
 
-Click **Save** 💾
+Click **Save** 
 
 ---
 
-### 📦 Topic 4 Complete — Debug Output Examples
+###  Topic 4 Complete — Debug Output Examples
 
-#### 🔴 CrashLoopBackOff (Agent Output):
+####  CrashLoopBackOff (Agent Output):
 
 ```bash
 ## Root Cause
@@ -837,7 +837,7 @@ curl http://localhost:8080
 
 ---
 
-## 📂 PART 5 — Topic 5: Delete Cluster
+##  PART 5 — Topic 5: Delete Cluster
 
 ### What this topic does:
 User wants to remove a cluster → Agent confirms which one → Generates safe delete commands
@@ -893,8 +893,8 @@ Click **`+`** → **`Advanced`** → **`Generative answers`**
 
 **Data Sources → Edit:**
 ```
-Web search          🔵 ON
-General knowledge   🔵 ON
+Web search           ON
+General knowledge    ON
 ```
 
 **Customize your prompt (paste into 0/8000 box):**
@@ -947,7 +947,7 @@ docker volume prune -f
 
 ---
 
-## ✅ PART 6 — Final Checklist
+## PART 6 — Final Checklist
 
 After building all 5 topics, verify everything:
 
@@ -1019,7 +1019,7 @@ kubectl config use-context kind-dev       # Switch to kind cluster
 
 ---
 
-## 🔗 Useful Links
+##  Useful Links
 
 | Resource | Link |
 |----------|------|
