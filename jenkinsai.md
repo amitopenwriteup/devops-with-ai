@@ -1,9 +1,9 @@
-# 🦙 Jenkins CI/CD + Ollama Local AI Agent
+#  Jenkins CI/CD + Ollama Local AI Agent
 ## Step-by-Step Workshop Guide — 100% Free, No API Keys, Runs Locally
 
 ---
 
-## 📋 Table of Contents
+##  Table of Contents
 
 1. [Workshop Overview](#1-workshop-overview)
 2. [Prerequisites](#2-prerequisites)
