@@ -8,13 +8,12 @@
 
 - A Google Account
 - Access to [idx.google.com](https://idx.google.com)
-- A GitHub account (needed for Steps 3 & 4)
+- A GitLab account (needed for Steps 3 & 4)
 - Basic familiarity with a terminal
 
 ---
 
 ## Step 1 — Provisioning the DevOps Workspace
-
 
 Instead of installing local tools, we spin up a cloud-based Linux environment.
 
@@ -34,7 +33,6 @@ echo "hello devops"
 
 ## Step 2 — Defining the Infrastructure (Nix)
 
-
 In DevOps, we never manually install tools. We define them in code.
 
 ### Part A — Edit dev.nix
@@ -49,14 +47,14 @@ In DevOps, we never manually install tools. We define them in code.
   packages = [
     pkgs.nodejs_20     # Runtime for the React app
     pkgs.terraform     # Infrastructure as Code
-    pkgs.gh            # GitHub CLI
+    pkgs.glab          # GitLab CLI
     pkgs.htop          # Process monitoring
     pkgs.jq            # JSON processor
   ];
 
   idx.extensions = [
     "hashicorp.terraform"
-    "github.vscode-github-actions"
+    "gitlab.gitlab-workflow"
   ];
 }
 ```
@@ -68,7 +66,7 @@ In DevOps, we never manually install tools. We define them in code.
 
 ```bash
 terraform --version   # Terraform v1.7.0
-gh --version          # gh version 2.43.0
+glab --version        # glab version 1.x.x
 node --version        # v20.11.0
 ```
 
@@ -77,7 +75,6 @@ node --version        # v20.11.0
 ---
 
 ## Step 3 — AI-Assisted CI/CD Planning
-
 
 We use the integrated Gemini AI to plan and generate our automation pipeline.
 
@@ -88,68 +85,69 @@ We use the integrated Gemini AI to plan and generate our automation pipeline.
 
 ```
 I am building a React app on Firebase.
-Generate a GitHub Actions YAML file that:
-  1. Runs on pull_request merge to 'main' only
+Generate a GitLab CI/CD YAML file that:
+  1. Runs on merge request to 'main' only
   2. Installs dependencies with npm ci
   3. Runs the test suite with npm test
   4. Deploys to Firebase Hosting on test success
 
-Use environment secrets for credentials.
+Use GitLab CI/CD variables for credentials.
 ```
 
-### Part B — Create the workflow file
+### Part B — Create the pipeline file
 
-3. Create the folder `.github/workflows` in your project root.
-4. Create a file named `deploy.yml` inside it and paste the AI-generated YAML. Reference template:
+3. Create a file named `.gitlab-ci.yml` in your project root and paste the AI-generated YAML. Reference template:
 
 ```yaml
-name: Deploy to Firebase Hosting
+image: node:20
 
-on:
-  push:
-    branches:
-      - main
+stages:
+  - test
+  - deploy
 
-jobs:
-  build_and_deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+variables:
+  NODE_ENV: production
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+cache:
+  paths:
+    - node_modules/
 
-      - name: Install dependencies
-        run: npm ci
+test:
+  stage: test
+  script:
+    - npm ci
+    - npm test
+  only:
+    - merge_requests
+    - main
 
-      - name: Run tests
-        run: npm test
-
-      - name: Deploy to Firebase
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: '${{ secrets.GITHUB_TOKEN }}'
-          firebaseServiceAccount: '${{ secrets.FIREBASE_TOKEN }}'
-          channelId: live
+deploy:
+  stage: deploy
+  script:
+    - npm ci
+    - npm install -g firebase-tools
+    - firebase deploy --token "$FIREBASE_TOKEN" --only hosting
+  only:
+    - main
+  environment:
+    name: production
+    url: https://your-project.web.app
 ```
 
-### Part C — Discover required secrets
+### Part C — Discover required CI/CD variables
 
 5. Ask Gemini the follow-up:
 
 ```
-What secrets do I need to add to GitHub for this to work?
+What CI/CD variables do I need to add to GitLab for this to work?
 Walk me through adding FIREBASE_TOKEN step by step.
 ```
 
-> **Warning:** Never commit the `FIREBASE_TOKEN` value to your repository. Store it in GitHub → Settings → Secrets and variables → Actions.
+> **Warning:** Never commit the `FIREBASE_TOKEN` value to your repository. Store it in GitLab → Settings → CI/CD → Variables, and mark it as **Masked**.
 
 ---
 
 ## Step 4 — Reliability & Testing
-
 
 A key DevOps pillar is "shifting left" — catching bugs as early as possible, before code ever reaches staging or production.
 
@@ -196,7 +194,6 @@ and (3) the submit button is clickable.
 
 ## Step 5 — Capacity Planning Simulation
 
-
 Use Gemini to simulate a DevOps "Incident Command" scenario before you hit production limits.
 
 1. In the Gemini chat, send this prompt:
@@ -235,7 +232,7 @@ By the end of this workshop, you have built four production artifacts:
 | # | Deliverable | File | What it does |
 |---|---|---|---|
 | 1 | Reproducible Environment | `.idx/dev.nix` | Any teammate gets identical tooling in one click |
-| 2 | Deployment Pipeline | `.github/workflows/deploy.yml` | Automated test + deploy on every merge to main |
+| 2 | Deployment Pipeline | `.gitlab-ci.yml` | Automated test + deploy on every merge to main |
 | 3 | Automated Setup | Nix `onCreate` hook | Deps install and dev server starts automatically |
 | 4 | Scaling Plan | Gemini analysis | Firebase tier limits mapped against 5K req/s traffic |
 
@@ -252,7 +249,7 @@ Copy-paste ready for the full workshop configuration:
   packages = [
     pkgs.nodejs_20
     pkgs.terraform
-    pkgs.gh
+    pkgs.glab
     pkgs.htop
     pkgs.jq
   ];
@@ -260,7 +257,7 @@ Copy-paste ready for the full workshop configuration:
   idx = {
     extensions = [
       "hashicorp.terraform"
-      "github.vscode-github-actions"
+      "gitlab.gitlab-workflow"
       "vitest.explorer"
     ];
 
@@ -299,7 +296,7 @@ Copy-paste ready for the full workshop configuration:
 
 ## Next Steps
 
-- Add a staging environment branch with a separate Firebase channel
+- Add a staging environment using GitLab Environments and protected branches
 - Configure the Firebase Emulator Suite inside your Nix environment
 - Use Terraform to provision Firebase resources declaratively
-- Explore Firebase App Hosting for containerized deployments
+- Explore GitLab's built-in container registry for Docker-based deployments
