@@ -1,9 +1,9 @@
-# 🐳 Dockerfile Generator Workshop
+#  Dockerfile Generator Workshop
 ### GenAI-Powered Dockerfile Generation with Ollama + Llama3 on Ubuntu VM
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 1. [Workshop Overview](#workshop-overview)
 2. [VM Prerequisites](#vm-prerequisites)
 3. [Environment Setup](#environment-setup)
