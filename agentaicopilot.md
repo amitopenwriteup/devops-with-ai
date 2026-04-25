@@ -1,4 +1,4 @@
-# 🤖 AI in Jenkins & GitHub Actions Workshop
+# AI in Jenkins & GitHub Actions Workshop
 ### *Powered by Microsoft Copilot Studio (Free Tier)*
 
 ---
