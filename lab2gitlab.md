@@ -1,725 +1,455 @@
-# GitLab CI/CD Workshop: From Zero to Secure Container
+# GitLab CI/CD Workshop: Copilot-Guided Participant Guide
 
-> **Who is this for?** Complete beginners to GitLab CI/CD. No prior experience needed.
-> **What you'll build:** A Java 11 app → Dockerized → Published to Docker Hub → Scanned with Trivy.
+**Format:** You drive. Copilot assists. The facilitator does not give you the answer.
+**Goal:** By the end, you will have a working pipeline that compiles, tests, builds, scans, and publishes a Java 11 container — written by you, with Copilot as your pair programmer.
+
+---
+
+## How This Guide Works
+
+Each section gives you:
+
+- **What you need to understand** — the concept in plain language
+- **What to build** — the task
+- **How to prompt Copilot** — example prompts you can use or adapt
+- **How to know it worked** — the verification check
+
+There are no answers in this document. If you are stuck, ask your facilitator for a nudge, not a solution.
+
+---
+
+## Before You Start
+
+Make sure you have:
+
+- A GitLab account (gitlab.com)
+- A Docker Hub account (hub.docker.com)
+- GitHub Copilot active in your editor (VS Code recommended)
+- Git installed and configured locally
 
 ---
 
 ## Table of Contents
 
-1. [Prompting Concepts: Zero-shot, Few-shot, Chain-of-Thought](#1-prompting-concepts)
-2. [GitLab CI Fundamentals](#2-gitlab-ci-fundamentals)
-3. [Setting Up Your GitLab Runner](#3-setting-up-your-gitlab-runner)
-4. [Importing the Java 11 Project](#4-importing-the-java-11-project)
-5. [Writing the Dockerfile](#5-writing-the-dockerfile)
-6. [Building & Publishing to Docker Hub](#6-building--publishing-to-docker-hub)
-7. [Security Scanning with Trivy](#7-security-scanning-with-trivy)
-8. [Full `.gitlab-ci.yml` — All Together](#8-full-gitlab-ciyml--all-together)
-9. [Hands-On Exercises](#9-hands-on-exercises)
+1. [Understanding the Three Prompting Styles](#1-understanding-the-three-prompting-styles)
+2. [GitLab CI Vocabulary](#2-gitlab-ci-vocabulary)
+3. [Set Up Your GitLab Runner](#3-set-up-your-gitlab-runner)
+4. [Import the Java 11 Project](#4-import-the-java-11-project)
+5. [Write Your Dockerfile](#5-write-your-dockerfile)
+6. [Configure Docker Hub Publishing](#6-configure-docker-hub-publishing)
+7. [Add Trivy Security Scanning](#7-add-trivy-security-scanning)
+8. [Build Your Full Pipeline](#8-build-your-full-pipeline)
+9. [Final Checklist](#9-final-checklist)
 
 ---
 
-## 1. Prompting Concepts
+## 1. Understanding the Three Prompting Styles
 
-> **Why does this matter?** When you write a `.gitlab-ci.yml` file, you're giving instructions to a machine — just like prompting an AI. Clear instructions = predictable results.
+This section is reading only. No code yet.
 
-### Zero-Shot Prompting
+When you talk to Copilot (or any AI), the way you phrase your request changes the quality of the output. There are three patterns you will practice today.
 
-**What it is:** You give a command with **no examples**. The system figures it out from context alone.
+### Zero-Shot
 
-**In CI terms:** Writing a pipeline stage with no template — you trust the tool to understand your intent.
+You give one instruction with no examples. You trust that Copilot understands the context.
 
-```yaml
-# Zero-shot: "just run the tests" — no example given
-test:
- script:
- - mvn test
-```
+When to use it: simple, well-known tasks where the intent is unambiguous.
 
-You didn't tell GitLab *how* Maven works. It just does it because Maven is installed. That's zero-shot thinking.
+Example of a zero-shot prompt to Copilot:
+> "Write a GitLab CI job that runs Maven tests."
 
----
+Copilot infers everything else — which image, which command, which stage.
 
-### Few-Shot (Multi-Shot) Prompting
+### Few-Shot (Multi-Shot)
 
-**What it is:** You provide **2–3 examples** so the system learns the pattern before doing the real task.
+You give Copilot two or three examples of the pattern you want, then ask it to continue.
 
-**In CI terms:** Defining multiple similar jobs so GitLab learns your pattern.
+When to use it: when you want Copilot to match a specific structure or style you have already established.
 
-```yaml
-# Few-shot: "here are examples of how I want stages to look"
-build-dev:
- stage: build
- script:
- - mvn package -Pdev
+Example: You write two jobs following the same pattern, then add a comment like:
+> "// follow the same pattern for the production build"
 
-build-staging:
- stage: build
- script:
- - mvn package -Pstaging
+Copilot reads your examples and continues in the same shape.
 
-# Now GitLab (and your team) understands the pattern for:
-build-prod:
- stage: build
- script:
- - mvn package -Pprod
-```
+### Chain-of-Thought
 
-Each example reinforces the expected structure.
+You break the problem into steps before asking for code. You reason out loud, then ask Copilot to implement each step.
 
----
+When to use it: complex tasks where jumping straight to code would skip important logic.
 
-### Chain-of-Thought (CoT)
+Example:
+> "I need a pipeline that: first checks if the code compiles, then runs tests, then builds a Docker image only if tests pass, then scans for vulnerabilities, then publishes only if the scan is clean. Start with the stages definition."
 
-**What it is:** Breaking a complex task into **step-by-step reasoning**. Instead of jumping to the answer, you walk through each step.
+You are walking Copilot through your reasoning before asking it to write anything.
 
-**In CI terms:** Your pipeline stages are a chain of thought — each step depends on the previous one succeeding.
+**Reflection question:** Look at the pipeline you will build today. Which of your five stages maps to which prompting style? Write your answer in the space below before moving on.
 
 ```
-Think step by step:
- 1. Does the code compile? → compile stage
- 2. Do the tests pass? → test stage
- 3. Is the image built? → build stage
- 4. Is it safe to ship? → trivy scan stage
- 5. Push only if all above pass → publish stage
-```
-
-This is exactly how a good pipeline is structured — **chain of thought made real**.
-
----
-
-## 2. GitLab CI Fundamentals
-
-### Key Vocabulary
-
-| Term | Meaning | Real-world Analogy |
-|------|---------|-------------------|
-| **Pipeline** | The full automated workflow | An assembly line |
-| **Stage** | A group of jobs that run together | One station on the line |
-| **Job** | A single unit of work | One task a worker does |
-| **Runner** | The machine that executes jobs | The worker |
-| **Artifact** | Files saved from a job | Output from the station |
-| **Variable** | A stored value (like a secret) | A sticky note with info |
-
-### Pipeline Flow
-
-```
-[Push Code] → [compile] → [test] → [build image] → [scan] → [publish]
- ↓ fail? ↓ fail? ↓ fail? ↓ fail?
- Pipeline stops here (nothing continues downstream)
+compile  →
+test     →
+build    →
+scan     →
+publish  →
 ```
 
 ---
 
-## 3. Setting Up Your GitLab Runner
+## 2. GitLab CI Vocabulary
 
-> A **Runner** is the machine that actually runs your CI jobs. Without it, nothing executes.
+Read this section. You will need these terms to write accurate Copilot prompts. Vague language produces vague code.
 
-### Option A: Use GitLab's Shared Runners (Easiest for beginners)
+| Term | What it means |
+|------|---------------|
+| Pipeline | The full sequence of automated steps triggered by a git push |
+| Stage | A named phase. Jobs in the same stage run in parallel. Stages run in order. |
+| Job | One unit of work inside a stage. It has a name, an image, and a script. |
+| Runner | The machine that executes a job. It must be online for the job to run. |
+| Image | The Docker image the runner uses to run your job (e.g. `maven:3.8-openjdk-11`) |
+| Service | A sidecar container your job needs (e.g. `docker:dind` for Docker-in-Docker) |
+| Artifact | A file or folder saved from a job so later jobs or humans can access it |
+| Variable | A key-value pair. Use for secrets, image names, environment settings. |
+| Tags | Labels that match a job to a specific runner |
+| `only` / `rules` | Conditions that control when a job runs (e.g. only on the main branch) |
 
-GitLab.com provides free shared runners. Just enable them:
-
-1. Go to your project → **Settings** → **CI/CD**
-2. Expand **Runners**
-3. Under "Shared runners", click **Enable shared runners for this project**
-
- Done! No setup needed.
+**Before writing any Copilot prompt today, make sure your prompt uses the correct term from this table.** "Run the build thing" is harder for Copilot to act on than "create a GitLab CI job in the build stage."
 
 ---
 
-### Option B: Register Your Own Runner (Recommended for production)
+## 3. Set Up Your GitLab Runner
 
-**Step 1 — Install GitLab Runner on your machine:**
+### What you need to understand
+
+A Runner is the compute that executes your jobs. Without one online, your pipeline will hang forever waiting. Runners can be shared (provided by GitLab) or self-hosted.
+
+For this workshop you have two options. Choose one.
+
+**Option A — Shared Runner (quickest)**
+
+GitLab.com provides free shared runners. Enable them in your project settings.
+
+Where to look: Project → Settings → CI/CD → Runners → Shared runners
+
+**Option B — Self-hosted Runner**
+
+You register your own machine as a runner. This is more realistic for production environments.
+
+### How to prompt Copilot
+
+If you choose Option B, open a terminal and use Copilot to help you understand the registration command:
+
+> "Explain what `gitlab-runner register` does and what each prompt means."
+
+Then use Copilot to generate the install commands for your operating system:
+
+> "Give me the commands to install gitlab-runner on [your OS]."
+
+### What to configure
+
+When registering, you will be asked for:
+
+- The GitLab instance URL
+- A registration token (find it in Settings → CI/CD → Runners)
+- A description for your runner
+- Tags — use `docker` and `java`
+- An executor — use `docker`
+- A default image — think about what language this project uses
+
+### How to know it worked
+
+Go to Project → Settings → CI/CD → Runners. Your runner should appear in the list with a status indicator showing it is online.
+
+### Key concept: Runner Tags
+
+Tags are how you tell a job which runner to use. If your job has `tags: [docker]` and your runner is tagged `docker`, they are matched. If there is no match, the job waits indefinitely.
+
+You will use this in every job you write today.
+
+---
+
+## 4. Import the Java 11 Project
+
+### What you need to understand
+
+The project is a Maven-based Java 11 application hosted on GitHub at `biezhi/java11`. You need it in GitLab so your pipeline can act on it.
+
+### Task
+
+Get the project into a GitLab repository under your account.
+
+### How to prompt Copilot
+
+> "Give me the git commands to clone a GitHub repo and push it to a new GitLab remote."
+
+After running the commands, confirm you can see the following files in your GitLab project:
+
+```
+pom.xml
+src/
+README.md
+.gitignore
+```
+
+If `pom.xml` is missing, the Maven stages will fail. Do not continue until it is there.
+
+### Understand `pom.xml` before writing pipeline code
+
+Before you write a single CI line, ask Copilot:
+
+> "Read this pom.xml and tell me: what Java version does it target, what does `mvn package` produce, and where does the output go?"
+
+This is chain-of-thought preparation. You are building understanding before writing instructions.
+
+---
+
+## 5. Write Your Dockerfile
+
+### What you need to understand
+
+A Dockerfile is the recipe for turning your source code into a container image. You want the image to be as small and secure as possible, which means using a multi-stage build: one stage to compile, a separate and smaller stage to run.
+
+### Think before you prompt
+
+Answer these questions yourself first. Write the answers down. Then use your answers to build the Copilot prompt.
+
+1. Which Docker base image has Maven and Java 11 available for building?
+2. What command do you run to build the JAR without running tests?
+3. Where does Maven put the output JAR by default?
+4. Which base image is appropriate for running a Java 11 app (not building it)?
+5. Should the container run as root? Why or why not?
+6. What command starts a Java application from a JAR?
+
+### How to prompt Copilot
+
+Once you have answered the six questions above, construct a chain-of-thought prompt:
+
+> "Write a multi-stage Dockerfile for a Maven Java 11 project. Stage 1 should [your answer to Q1, Q2, Q3]. Stage 2 should [your answer to Q4, Q5, Q6]."
+
+The more specific your prompt, the less you will have to correct afterward.
+
+### What Copilot might miss
+
+After Copilot generates the Dockerfile, check it yourself:
+
+- Is there a non-root user created and switched to before the ENTRYPOINT?
+- Does Stage 2 copy from Stage 1 using `--from=`?
+- Is the base image for Stage 2 a runtime image, not a full JDK?
+
+If any of these are missing, prompt Copilot to fix the specific issue rather than regenerating the whole file.
+
+### How to know it worked
+
+Run this locally (if Docker is installed):
 
 ```bash
-# Linux (Debian/Ubuntu)
-curl -L "https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh" | sudo bash
-sudo apt-get install gitlab-runner
-
-# macOS
-brew install gitlab-runner
-brew services start gitlab-runner
+docker build -t java11-test .
+docker run --rm java11-test
 ```
 
-**Step 2 — Get your registration token:**
-
-Go to **Project → Settings → CI/CD → Runners → Registration token** and copy it.
-
-**Step 3 — Register the runner:**
-
-```bash
-sudo gitlab-runner register
-```
-
-You'll be prompted:
-
-```
-Enter the GitLab instance URL:
-> https://gitlab.com
-
-Enter the registration token:
-> YOUR_TOKEN_HERE
-
-Enter a description for the runner:
-> my-workshop-runner
-
-Enter tags for the runner (comma-separated):
-> docker, java
-
-Enter the executor:
-> docker
-
-Enter the default Docker image:
-> maven:3.8-openjdk-11
-```
-
-**Step 4 — Verify it's online:**
-
-```bash
-sudo gitlab-runner status
-# → gitlab-runner: Service is running!
-```
-
-In GitLab UI → Settings → CI/CD → Runners → you should see a **green dot** next to your runner.
-
-### Runner Tags — Why They Matter
-
-Tags let you route specific jobs to specific runners:
-
-```yaml
-# This job will ONLY run on runners tagged "docker"
-build:
- tags:
- - docker
- script:
- - docker build .
-```
+If the container starts without errors, your Dockerfile is correct.
 
 ---
 
-## 4. Importing the Java 11 Project
+## 6. Configure Docker Hub Publishing
 
-> We'll use the `biezhi/java11` project structure you saw — a Maven-based Java 11 demo.
+### What you need to understand
 
-### Option A: Fork from GitHub into GitLab
+You never store credentials in code. GitLab CI variables are the secure place for secrets. Your pipeline will read them at runtime using `$VARIABLE_NAME` syntax.
 
-1. In GitLab, click **New Project** → **Import Project** → **GitHub**
-2. Authenticate with GitHub
-3. Search for `biezhi/java11` and import
+### Task A: Create a Docker Hub access token
 
-### Option B: Manual Import
+Do not use your Docker Hub password directly. Create an access token instead.
 
-```bash
-# Clone the GitHub repo
-git clone https://github.com/biezhi/java11.git
-cd java11
+Where: Docker Hub → your account → Account Settings → Security → New Access Token
 
-# Add GitLab as a new remote
-git remote add gitlab https://gitlab.com/YOUR_USERNAME/java11.git
+Give it a name like `gitlab-workshop` and note down the token value. You will not see it again.
 
-# Push to GitLab
-git push gitlab main
-```
+### Task B: Store the credentials in GitLab
 
-### Project Structure You Should See
+Where: Project → Settings → CI/CD → Variables → Add variable
 
-```
-java11/
- src/
- main/java/io/github/biezhi/java11/ ← Java source files
- .gitignore
- LICENSE
- README.md
- pom.xml ← Maven build config
-```
+You need two variables. Decide on the names yourself — you will reference them by those names in your pipeline. Make the password/token masked so it never appears in logs.
+
+### Task C: Understand image naming
+
+Docker Hub images follow this format: `username/repository:tag`
+
+For traceability, your tag should change with every commit. GitLab provides built-in variables for this. Ask Copilot:
+
+> "What GitLab CI built-in variable gives me a short unique identifier for the current commit?"
+
+Use that variable to build your image tag. Write down the full image reference format you will use before moving to the next section.
+
+### How to know it worked
+
+You will verify this in Section 8 when the pipeline runs end-to-end.
 
 ---
 
-## 5. Writing the Dockerfile
+## 7. Add Trivy Security Scanning
 
-> A **Dockerfile** defines how to package your app into a container image.
+### What you need to understand
 
-### Chain-of-Thought Approach to Writing a Dockerfile
+Trivy is an open-source vulnerability scanner from Aqua Security. It inspects your container image for known CVEs (Common Vulnerabilities and Exposures) in OS packages and application dependencies.
 
-**Step 1 — What base do I need?**
-→ Java 11 app built with Maven → need JDK 11 to build, JRE 11 to run.
+The key design decision: the scan stage runs after the image is built but before it is published. If vulnerabilities are found above your threshold, the pipeline stops and nothing reaches Docker Hub.
 
-**Step 2 — How do I build it?**
-→ `mvn package` produces a JAR file in `target/`
+### Think before you prompt
 
-**Step 3 — What do I actually ship?**
-→ Only the JAR. We don't need Maven or source code in production.
+Answer these questions:
 
-**Step 4 — How do I run it?**
-→ `java -jar app.jar`
+1. What Trivy Docker image would you use to run Trivy in a CI job?
+2. What command scans a Docker image by name?
+3. What flag tells Trivy to exit with a non-zero code when vulnerabilities are found?
+4. What flag sets the minimum severity that causes a failure?
+5. How do you save the scan output as a file so it can be downloaded from GitLab?
 
-### The Dockerfile (Multi-stage — Best Practice)
+### How to prompt Copilot
 
-Create a file named `Dockerfile` in your project root:
+Use your answers to construct a specific prompt. Example structure:
 
-```dockerfile
-# ============================================================
-# STAGE 1: BUILD
-# Few-shot hint: This is the "builder" stage — compile only
-# ============================================================
-FROM maven:3.8-openjdk-11 AS builder
+> "Write a GitLab CI job in the scan stage that uses the Trivy Docker image to scan [image reference]. It should fail the pipeline if [severity level] vulnerabilities are found, and save the report as an artifact."
 
-# Set working directory inside the container
-WORKDIR /app
+### After Copilot responds
 
-# Copy dependency list first (caching optimization)
-# Zero-shot: Maven knows what to do with pom.xml
-COPY pom.xml .
-RUN mvn dependency:go-offline -B
+Review the output and ask yourself:
 
-# Copy source code and build
-COPY src ./src
-RUN mvn package -DskipTests -B
+- Does the job have `entrypoint: [""]` set? (Required when overriding a Docker image's default entrypoint)
+- Is `allow_failure` set to false so the pipeline actually stops on findings?
+- Is the artifact configured with `when: always` so the report is saved even on failure?
 
-# ============================================================
-# STAGE 2: RUNTIME
-# Chain-of-thought: We proved it builds → now ship lean image
-# ============================================================
-FROM eclipse-temurin:11-jre-alpine
+If any are missing, ask Copilot to add them individually.
 
-# Create a non-root user (security best practice)
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+### How to know it worked
 
-WORKDIR /app
-
-# Copy ONLY the built JAR from the builder stage
-COPY --from=builder /app/target/*.jar app.jar
-
-# Switch to non-root user
-USER appuser
-
-# Expose port (adjust if your app uses a different port)
-EXPOSE 8080
-
-# Start the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
-```
-
-### Why Multi-stage?
-
-| Single-stage Image | Multi-stage Image |
-|-------------------|------------------|
-| ~650 MB (includes Maven, JDK, source) | ~85 MB (only JRE + JAR) |
-| Attack surface: large | Attack surface: minimal |
-| Build tools exposed in prod | Build tools gone |
+A passing scan means no HIGH or CRITICAL vulnerabilities. A failing scan means the pipeline correctly caught something. Both outcomes are correct behavior — one just needs you to update the base image.
 
 ---
 
-## 6. Building & Publishing to Docker Hub
+## 8. Build Your Full Pipeline
 
-### Prerequisites
+### What you need to understand
 
-1. Create a free account at [hub.docker.com](https://hub.docker.com)
-2. Create a repository (e.g., `yourusername/java11-demo`)
+Everything you have built so far becomes one file: `.gitlab-ci.yml`. This file lives at the root of your repository. GitLab reads it on every push.
 
-### Store Secrets in GitLab (Never in code!)
+### The pipeline shape
 
-Go to **Project → Settings → CI/CD → Variables** and add:
+Your pipeline must have exactly these five stages, in this order:
 
-| Variable Name | Value | Protected | Masked |
-|--------------|-------|-----------|--------|
-| `DOCKER_USERNAME` | your Docker Hub username | | |
-| `DOCKER_PASSWORD` | your Docker Hub password/token | | |
-
-> **Tip:** Use a Docker Hub **Access Token** instead of your password. Go to Docker Hub → Account Settings → Security → New Access Token.
-
-### CI Job: Build and Push
-
-```yaml
-build-and-push:
- stage: build
- image: docker:24
- services:
- - docker:24-dind # Docker-in-Docker: allows running docker commands
- variables:
- DOCKER_TLS_CERTDIR: "/certs"
- IMAGE_TAG: $DOCKER_USERNAME/java11-demo:$CI_COMMIT_SHORT_SHA
- before_script:
- # Chain-of-thought step 1: authenticate before pushing
- - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
- script:
- # Chain-of-thought step 2: build the image
- - docker build -t $IMAGE_TAG .
- # Chain-of-thought step 3: also tag as latest
- - docker tag $IMAGE_TAG $DOCKER_USERNAME/java11-demo:latest
- # Chain-of-thought step 4: push both tags
- - docker push $IMAGE_TAG
- - docker push $DOCKER_USERNAME/java11-demo:latest
- tags:
- - docker
+```
+compile → test → build → scan → publish
 ```
 
-### Understanding `$CI_COMMIT_SHORT_SHA`
+Each stage must only run if the previous one passed. This is enforced automatically by GitLab when you define stages in order.
 
-GitLab provides built-in variables automatically:
+### How to approach this with Copilot
 
-| Variable | Example Value | Use |
-|----------|--------------|-----|
-| `$CI_COMMIT_SHORT_SHA` | `a1b2c3d4` | Unique tag per commit |
-| `$CI_COMMIT_REF_NAME` | `main` | Branch name |
-| `$CI_PROJECT_NAME` | `java11` | Repo name |
-| `$CI_PIPELINE_ID` | `12345` | Pipeline number |
+Do not ask Copilot to write the whole file at once. Use chain-of-thought:
+
+**Step 1 — Define the stages**
+
+> "Write the stages block for a GitLab CI pipeline with these five stages in order: compile, test, build, scan, publish."
+
+**Step 2 — Add global variables**
+
+> "Add a variables block that defines the Maven local repository path, the Docker image name using my Docker Hub username variable, and the full image tag using the commit SHA variable."
+
+**Step 3 — Add Maven caching**
+
+> "Add a cache block that caches the Maven local repository between jobs."
+
+**Step 4 — Add each job one at a time**
+
+For each job, tell Copilot the stage, the Docker image to use, and the command to run. Reference the work you have already done in sections 3 through 7.
+
+Use few-shot prompting here: write the compile job yourself (or with Copilot), then say:
+
+> "Follow the same structure to write the test job, but save the JUnit XML reports as artifacts."
+
+**Step 5 — Restrict jobs to the main branch**
+
+> "Add an `only` block to the build, scan, and publish jobs so they only run on the main branch."
+
+### Things to check before committing
+
+Walk through this list yourself without asking Copilot:
+
+- Does every job have a `tags` entry that matches your runner?
+- Does the build job have `docker:dind` as a service?
+- Is `DOCKER_TLS_CERTDIR` set to `/certs` in the build job?
+- Does the scan job run after the build job?
+- Does the publish job run after the scan job?
+- Are your secret variable names consistent across the file?
+
+### How to know it worked
+
+Push the file to your main branch. Go to your project in GitLab → CI/CD → Pipelines. You should see a pipeline appear with five stages. Watch each one turn green in order.
+
+If a job fails, click into it to read the log. Use that log output as your next Copilot prompt:
+
+> "This GitLab CI job failed with the following error: [paste error]. What is the likely cause and how do I fix it?"
 
 ---
 
-## 7. Security Scanning with Trivy
+## 9. Final Checklist
 
-> **Trivy** by Aqua Security scans your container image for known vulnerabilities (CVEs) before it reaches production.
+Work through this list yourself. Do not tick a box until you have personally verified it — not just assumed it.
 
-### What Trivy Checks
+**Runner**
+- [ ] Runner is visible in Project → Settings → CI/CD → Runners with an online status
+- [ ] Runner has the `docker` tag
+- [ ] Runner executor is set to `docker`
 
-- OS packages (Alpine, Ubuntu, Debian)
-- Application dependencies (Maven, npm, pip)
-- Misconfigurations in Dockerfiles
-- Secrets accidentally baked into images
+**Project**
+- [ ] Repository contains `pom.xml` at the root
+- [ ] Repository contains `Dockerfile` at the root
+- [ ] Repository contains `.gitlab-ci.yml` at the root
 
-### CI Job: Trivy Scan
+**Variables**
+- [ ] Docker Hub username is stored as a CI variable
+- [ ] Docker Hub access token is stored as a masked CI variable
+- [ ] No credentials appear anywhere in any committed file
 
-```yaml
-trivy-scan:
- stage: scan
- image:
- name: aquasec/trivy:latest
- entrypoint: [""] # Override entrypoint so we can run custom commands
- variables:
- IMAGE_TAG: $DOCKER_USERNAME/java11-demo:$CI_COMMIT_SHORT_SHA
- # Fail pipeline if CRITICAL or HIGH vulnerabilities found
- TRIVY_EXIT_CODE: "1"
- TRIVY_SEVERITY: "CRITICAL,HIGH"
- script:
- # Chain-of-thought: Pull the image we just built, then scan it
- - trivy image
- --exit-code $TRIVY_EXIT_CODE
- --severity $TRIVY_SEVERITY
- --no-progress
- --format table
- $IMAGE_TAG
- allow_failure: false # This stage MUST pass before publish
-```
+**Pipeline**
+- [ ] Pipeline triggers automatically on push to main
+- [ ] All five stages appear: compile, test, build, scan, publish
+- [ ] All five stages pass (green)
+- [ ] A failed scan correctly stops the pipeline before publish
 
-### Trivy Output Example
+**Docker Hub**
+- [ ] Image appears in your Docker Hub repository
+- [ ] Image is tagged with the commit SHA
+- [ ] Image is also tagged as `latest`
 
-```
-java11-demo:a1b2c3d4 (alpine 3.18.4)
-
-Total: 2 (HIGH: 2, CRITICAL: 0)
-
- Library Vulnerability Severity Installed Version Fixed Version Title 
-
- libssl3 CVE-2023-xxxx HIGH 3.1.1-r1 3.1.2-r0 OpenSSL: buffer overflow 
- libcrypto3 CVE-2023-xxxx HIGH 3.1.1-r1 3.1.2-r0 OpenSSL: information disclosure 
-
-```
-
-If vulnerabilities are found → **pipeline fails** → image is NOT published. 
-
-### Save Trivy Report as Artifact
-
-```yaml
-trivy-scan:
- # ... (same as above, add these lines)
- artifacts:
- when: always # Save report even if job fails
- reports:
- junit: trivy-report.xml # Shows in GitLab's test results UI
- paths:
- - trivy-report.html # Also save HTML for humans
- expire_in: 7 days
- script:
- # Generate both table output and HTML report
- - trivy image --format template --template "@contrib/html.tpl"
- -o trivy-report.html $IMAGE_TAG
- - trivy image --format junit -o trivy-report.xml $IMAGE_TAG
- - trivy image --exit-code 1 --severity CRITICAL,HIGH $IMAGE_TAG
-```
+**Trivy**
+- [ ] Scan report is downloadable from the pipeline artifacts
+- [ ] You can explain what the severity levels mean and why you chose your threshold
 
 ---
 
-## 8. Full `.gitlab-ci.yml` — All Together
+## Copilot Prompting Reference
 
-Create `.gitlab-ci.yml` in your project root:
+Use these as starting points. Adapt them to your specific context — generic prompts give generic results.
 
-```yaml
-# ============================================================
-# GitLab CI/CD Pipeline — Java 11 Workshop
-# Chain-of-thought: compile → test → build → scan → publish
-# ============================================================
-
-# Define the order of stages (chain of thought)
-stages:
- - compile # Step 1: Does it build?
- - test # Step 2: Do tests pass?
- - build # Step 3: Package into container
- - scan # Step 4: Is it safe?
- - publish # Step 5: Ship it!
-
-# 
-# Global variables (reused across all jobs)
-# 
-variables:
- MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
- IMAGE_NAME: "$DOCKER_USERNAME/java11-demo"
- IMAGE_TAG: "$IMAGE_NAME:$CI_COMMIT_SHORT_SHA"
-
-# 
-# Cache Maven dependencies between jobs
-# 
-cache:
- paths:
- - .m2/repository/
-
-# 
-# STAGE: compile
-# Zero-shot: Maven knows how to compile
-# 
-compile:
- stage: compile
- image: maven:3.8-openjdk-11
- script:
- - mvn compile -B
- tags:
- - docker
-
-# 
-# STAGE: test
-# Few-shot: same pattern as compile, different goal
-# 
-test:
- stage: test
- image: maven:3.8-openjdk-11
- script:
- - mvn test -B
- artifacts:
- when: always
- reports:
- junit:
- - target/surefire-reports/*.xml # GitLab shows test results natively
- expire_in: 1 week
- tags:
- - docker
-
-# 
-# STAGE: build
-# Build Docker image and push to registry
-# 
-build-image:
- stage: build
- image: docker:24
- services:
- - docker:24-dind
- variables:
- DOCKER_TLS_CERTDIR: "/certs"
- before_script:
- - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
- script:
- - docker build -t $IMAGE_TAG .
- - docker tag $IMAGE_TAG $IMAGE_NAME:latest
- - docker push $IMAGE_TAG
- - docker push $IMAGE_NAME:latest
- tags:
- - docker
- only:
- - main # Only build images from the main branch
-
-# 
-# STAGE: scan
-# Chain-of-thought: prove it's safe BEFORE publishing
-# 
-trivy-scan:
- stage: scan
- image:
- name: aquasec/trivy:latest
- entrypoint: [""]
- before_script:
- - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
- script:
- # Generate HTML report for humans
- - trivy image
- --format template
- --template "@contrib/html.tpl"
- -o trivy-report.html
- $IMAGE_TAG
- # Fail pipeline on CRITICAL or HIGH findings
- - trivy image
- --exit-code 1
- --severity CRITICAL,HIGH
- --no-progress
- $IMAGE_TAG
- artifacts:
- when: always
- paths:
- - trivy-report.html
- expire_in: 7 days
- tags:
- - docker
- only:
- - main
-
-# 
-# STAGE: publish
-# Only runs if ALL previous stages passed
-# 
-publish:
- stage: publish
- image: docker:24
- services:
- - docker:24-dind
- variables:
- DOCKER_TLS_CERTDIR: "/certs"
- before_script:
- - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
- script:
- # Re-tag with version from git tag (if available) or use SHA
- - |
- if [ -n "$CI_COMMIT_TAG" ]; then
- docker pull $IMAGE_TAG
- docker tag $IMAGE_TAG $IMAGE_NAME:$CI_COMMIT_TAG
- docker push $IMAGE_NAME:$CI_COMMIT_TAG
- echo "Published as $IMAGE_NAME:$CI_COMMIT_TAG"
- else
- echo "No git tag — image already published as :latest and :$CI_COMMIT_SHORT_SHA"
- fi
- tags:
- - docker
- only:
- - main
- - tags
-```
+| What you want | Starting prompt |
+|---------------|----------------|
+| Understand a YAML key | "In a .gitlab-ci.yml file, what does [key] do and when would I use it?" |
+| Debug a pipeline error | "This GitLab CI job failed with: [paste log]. What is the cause?" |
+| Understand a Docker concept | "Explain what [concept] means in the context of a multi-stage Dockerfile." |
+| Fix a specific line | "This line in my Dockerfile: [paste line]. What is wrong with it and how do I fix it?" |
+| Understand a Trivy flag | "What does the Trivy flag [flag] do and what value should I use for a production scan?" |
+| Add a feature to an existing job | "Here is my GitLab CI job: [paste job]. Add [feature] to it." |
 
 ---
 
-## 9. Hands-On Exercises
+## If You Are Stuck
 
-### Exercise 1 — Zero-Shot (Beginner)
+In order, try:
 
-Add a `package` job between `test` and `build-image` that runs `mvn package -DskipTests`.
-
-**Hint:** Copy the `compile` job and change the stage and script.
-
-<details>
-<summary> Show Answer</summary>
-
-```yaml
-package:
- stage: test # runs in parallel with test stage
- image: maven:3.8-openjdk-11
- script:
- - mvn package -DskipTests -B
- artifacts:
- paths:
- - target/*.jar
- expire_in: 1 hour
- tags:
- - docker
-```
-
-</details>
+1. Read the error message carefully. The answer is usually in the first line.
+2. Ask Copilot with the exact error text pasted in.
+3. Check the GitLab CI/CD documentation at docs.gitlab.com/ee/ci/
+4. Ask your facilitator — describe what you tried before asking.
 
 ---
 
-### Exercise 2 — Few-Shot (Intermediate)
-
-Add a second scan job that scans for **MEDIUM** vulnerabilities but does **not** fail the pipeline (advisory only).
-
-**Hint:** Use `allow_failure: true` and `TRIVY_SEVERITY: "MEDIUM"`.
-
-<details>
-<summary> Show Answer</summary>
-
-```yaml
-trivy-scan-advisory:
- stage: scan
- image:
- name: aquasec/trivy:latest
- entrypoint: [""]
- script:
- - trivy image
- --exit-code 0 # Never fail — advisory only
- --severity MEDIUM
- --no-progress
- $IMAGE_TAG
- allow_failure: true
- tags:
- - docker
- only:
- - main
-```
-
-</details>
-
----
-
-### Exercise 3 — Chain-of-Thought (Advanced)
-
-Think through and add a **deploy** stage that runs after `publish` and sends a Slack notification using `curl`. 
-
-**Chain-of-thought questions to answer before coding:**
-1. What stage does it go in?
-2. What image do I need (`curl` is in `alpine`)?
-3. Where do I store the Slack webhook URL?
-4. What should the message say?
-5. Should it run on all branches or only `main`?
-
-<details>
-<summary> Show Answer</summary>
-
-First add `deploy` to your `stages:` list, then:
-
-```yaml
-notify-slack:
- stage: deploy
- image: alpine:latest
- before_script:
- - apk add --no-cache curl
- script:
- - |
- curl -X POST -H 'Content-type: application/json' \
- --data "{
- \"text\": \" *$CI_PROJECT_NAME* deployed!\n• Commit: \`$CI_COMMIT_SHORT_SHA\` by $GITLAB_USER_LOGIN\n• Image: \`$IMAGE_TAG\`\n• Pipeline: $CI_PIPELINE_URL\"
- }" \
- $SLACK_WEBHOOK_URL
- tags:
- - docker
- only:
- - main
-```
-
-Add `SLACK_WEBHOOK_URL` as a masked GitLab CI variable.
-
-</details>
-
----
-
-## Workshop Checklist
-
-- [ ] GitLab Runner registered and showing green online
-- [ ] Java 11 project imported into GitLab
-- [ ] `Dockerfile` created with multi-stage build
-- [ ] `DOCKER_USERNAME` and `DOCKER_PASSWORD` set as CI variables
-- [ ] `.gitlab-ci.yml` committed and pipeline runs
-- [ ] Docker Hub shows your image with commit SHA tag
-- [ ] Trivy scan report downloadable from pipeline artifacts
-- [ ] All 5 stages shown green in GitLab pipeline view
-
----
-
-## Quick Reference Card
-
-```
-Pipeline Trigger: git push
-Stages order: compile → test → build → scan → publish
-Image naming: username/repo:SHORT_SHA
-Secrets location: Settings → CI/CD → Variables
-Artifacts: Download from pipeline → job → Browse
-Runner tags: match job tags: [docker] to runner tags
-Trivy severity: CRITICAL,HIGH = fail | MEDIUM = warn only
-```
-
----
-
-*Workshop created for GitLab CI/CD beginners — covering zero-shot, few-shot, and chain-of-thought prompting patterns as applied to pipeline design.*
+*This is a participant guide. The goal is that you understand every line in your pipeline well enough to explain it to someone else. If you cannot explain it, prompt Copilot to explain it to you — then try again.*
