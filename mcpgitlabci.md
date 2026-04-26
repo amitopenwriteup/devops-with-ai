@@ -66,13 +66,12 @@ git-ai-tool/
 ```bash
 mkdir git-ai-tool
 cd git-ai-tool
-python -m venv venv
+python3 -m venv venv
 
 # Activate
 # macOS/Linux:
 source venv/bin/activate
-# Windows:
-venv\Scripts\activate
+
 ```
 
 ### Step 1.2 — Install Dependencies
