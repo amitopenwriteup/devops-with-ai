@@ -156,16 +156,16 @@ def scan_repo(repo_path: str) -> dict:
         for f in files[:10]:
             tree.append(f"{indent}  [file] {f}")
 
-    branch = _git(repo_path, ["rev-parse", "--abbrev-ref", "HEAD"]).strip()
+    branch  = _git(repo_path, ["rev-parse", "--abbrev-ref", "HEAD"]).strip()
     commits = _git(repo_path, ["log", "--oneline", "-5"]).strip().split("\n")
-    stack = _detect_stack(path)
+    stack   = _detect_stack(path)
 
     return {
-        "repo_path": str(path),
-        "branch": branch,
+        "repo_path":      str(path),
+        "branch":         branch,
         "recent_commits": commits,
-        "tech_stack": stack,
-        "file_tree": "\n".join(tree),
+        "tech_stack":     stack,
+        "file_tree":      "\n".join(tree),
     }
 
 
@@ -174,21 +174,21 @@ def get_changeset(repo_path: str) -> dict:
     if not v["valid"]:
         return {"error": v["error"]}
 
-    status = _git(repo_path, ["status", "--short"])
-    diff_staged = _git(repo_path, ["diff", "--cached"])
+    status        = _git(repo_path, ["status", "--short"])
+    diff_staged   = _git(repo_path, ["diff", "--cached"])
     diff_unstaged = _git(repo_path, ["diff"])
 
-    staged   = [l[3:] for l in status.splitlines() if l.startswith(("A ", "M ", "D ", "R "))]
-    unstaged = [l[3:] for l in status.splitlines() if l.startswith((" M", " D", " A"))]
+    staged    = [l[3:] for l in status.splitlines() if l.startswith(("A ", "M ", "D ", "R "))]
+    unstaged  = [l[3:] for l in status.splitlines() if l.startswith((" M", " D", " A"))]
     untracked = [l[3:] for l in status.splitlines() if l.startswith("??")]
     full_diff = (diff_staged + "\n" + diff_unstaged).strip()
 
     return {
-        "staged_files": staged,
+        "staged_files":   staged,
         "unstaged_files": unstaged,
         "untracked_files": untracked,
-        "diff": full_diff[:8000],
-        "has_changes": bool(staged or unstaged or untracked),
+        "diff":           full_diff[:8000],
+        "has_changes":    bool(staged or unstaged or untracked),
     }
 
 
@@ -211,8 +211,13 @@ def _detect_stack(path: Path) -> list:
 
 def _git(repo_path: str, args: list) -> str:
     try:
-        r = subprocess.run(["git"] + args, cwd=repo_path,
-                           capture_output=True, text=True, timeout=15)
+        r = subprocess.run(
+            ["git"] + args,
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
         return r.stdout
     except Exception as e:
         return f"[git error: {e}]"
@@ -258,18 +263,19 @@ def analyze_issues(repo_path: str, model: str = DEFAULT_MODEL) -> str:
     if not changeset["has_changes"]:
         return "No changes detected in the repository."
 
+    diff_text = changeset["diff"][:6000]
+
     system = (
         "You are a senior software engineer doing code review. "
         "Be concise. Focus on bugs, security issues, and anti-patterns. "
         "Format your response as a short bullet list."
     )
-    prompt = f"""Review this git diff for issues:
-
-```diff
-{changeset['diff'][:6000]}
-```
-
-List bugs, security problems, or code quality issues. If none, say 'No issues found.'"""
+    prompt = (
+        "Review this git diff for issues:\n\n"
+        + diff_text
+        + "\n\nList bugs, security problems, or code quality issues. "
+        "If none, say 'No issues found.'"
+    )
 
     return ollama_chat(prompt, system=system, model=model)
 
@@ -279,26 +285,29 @@ def generate_ci(repo_path: str, model: str = DEFAULT_MODEL, save: bool = False) 
     if "error" in scan:
         return f"Error: {scan['error']}"
 
-    stack = scan.get("tech_stack", [])
-    branch = scan.get("branch", "main")
+    stack     = scan.get("tech_stack", [])
+    branch    = scan.get("branch", "main")
+    tree      = scan.get("file_tree", "")[:2000]
+    stack_str = ", ".join(stack) if stack else "Unknown"
 
     system = (
         "You are a DevOps engineer. Output valid GitLab CI YAML only. "
         "No explanations. No markdown fences. Just raw YAML."
     )
-    prompt = f"""Generate a .gitlab-ci.yml for:
-- Tech stack: {', '.join(stack) if stack else 'Unknown'}
-- Default branch: {branch}
-- File structure:
-{scan.get('file_tree', '')[:2000]}
-
-Include stages: build, test, deploy.
-Use caching. Add only:deploy for branch '{branch}'.
-Return raw YAML only."""
+    prompt = (
+        "Generate a .gitlab-ci.yml for:\n"
+        f"- Tech stack: {stack_str}\n"
+        f"- Default branch: {branch}\n"
+        "- File structure:\n"
+        + tree
+        + "\n\nInclude stages: build, test, deploy. "
+        "Use caching where applicable. "
+        f"Add only:deploy rule for branch '{branch}'. "
+        "Return raw YAML only."
+    )
 
     ci_yaml = ollama_chat(prompt, system=system, model=model)
 
-    # Validate; fall back to template if invalid
     try:
         yaml.safe_load(ci_yaml)
     except yaml.YAMLError:
@@ -312,31 +321,71 @@ Return raw YAML only."""
     return ci_yaml
 
 
+def summarize_branch(repo_path: str, model: str = DEFAULT_MODEL) -> str:
+    log = _git(repo_path, ["log", "main..HEAD", "--oneline"])
+    if not log.strip():
+        return "No commits ahead of main."
+    prompt = "Summarize these git commits in plain English:\n\n" + log
+    return ollama_chat(prompt, model=model)
+
+
+def generate_mr_description(repo_path: str, model: str = DEFAULT_MODEL) -> str:
+    changeset = get_changeset(repo_path)
+    diff = changeset.get("diff", "")[:4000]
+    system = "You write concise, professional merge request descriptions."
+    prompt = "Write a clear merge request description for this diff:\n\n" + diff
+    return ollama_chat(prompt, system=system, model=model)
+
+
+# --------------------------------------------------
+# Fallback CI template
+# --------------------------------------------------
+
 def _fallback_ci(stack: list, branch: str) -> str:
     jobs = {}
+
     if "Python" in stack:
-        jobs["build"] = {"stage": "build", "image": "python:3.11-slim",
-                         "script": ["pip install -r requirements.txt"],
-                         "cache": {"paths": [".cache/pip"], "key": "$CI_COMMIT_REF_SLUG"}}
-        jobs["test"]  = {"stage": "test",  "image": "python:3.11-slim",
-                         "script": ["pip install -r requirements.txt", "pytest --tb=short"]}
+        jobs["build"] = {
+            "stage": "build",
+            "image": "python:3.11-slim",
+            "script": ["pip install -r requirements.txt"],
+            "cache": {"paths": [".cache/pip"], "key": "$CI_COMMIT_REF_SLUG"},
+        }
+        jobs["test"] = {
+            "stage": "test",
+            "image": "python:3.11-slim",
+            "script": ["pip install -r requirements.txt", "pytest --tb=short"],
+        }
     elif "Node.js" in stack:
-        jobs["build"] = {"stage": "build", "image": "node:20-alpine",
-                         "script": ["npm ci"],
-                         "cache": {"paths": ["node_modules/"], "key": "$CI_COMMIT_REF_SLUG"}}
-        jobs["test"]  = {"stage": "test", "image": "node:20-alpine",
-                         "script": ["npm ci", "npm test"]}
+        jobs["build"] = {
+            "stage": "build",
+            "image": "node:20-alpine",
+            "script": ["npm ci"],
+            "cache": {"paths": ["node_modules/"], "key": "$CI_COMMIT_REF_SLUG"},
+        }
+        jobs["test"] = {
+            "stage": "test",
+            "image": "node:20-alpine",
+            "script": ["npm ci", "npm test"],
+        }
     else:
         jobs["build"] = {"stage": "build", "script": ["make build || true"]}
         jobs["test"]  = {"stage": "test",  "script": ["make test || true"]}
 
     if "Docker" in stack:
-        jobs["docker_build"] = {"stage": "build", "image": "docker:24",
-                                 "services": ["docker:24-dind"],
-                                 "script": ["docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA ."]}
+        jobs["docker_build"] = {
+            "stage": "build",
+            "image": "docker:24",
+            "services": ["docker:24-dind"],
+            "script": ["docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA ."],
+        }
 
-    jobs["deploy"] = {"stage": "deploy", "script": ["echo Deploying"],
-                      "only": [branch], "when": "manual"}
+    jobs["deploy"] = {
+        "stage": "deploy",
+        "script": ["echo Deploying"],
+        "only": [branch],
+        "when": "manual",
+    }
 
     ci = {"stages": ["build", "test", "deploy"]}
     ci.update(jobs)
