@@ -9,7 +9,7 @@ Before the workshop, ensure you have the following installed:
 
 | Tool | Version | Check Command |
 |------|---------|---------------|
-| Python | >= 3.11 | `python --version` |
+| python3 | >= 3.11 | `python3 --version` |
 | Git | >= 2.x | `git --version` |
 | Ollama | Latest | `ollama --version` |
 | pip | Latest | `pip --version` |
@@ -67,7 +67,7 @@ git-mcp-server/
 ```bash
 mkdir git-mcp-server
 cd git-mcp-server
-python -m venv venv
+python3 -m venv venv
 
 # Activate the virtual environment
 # On macOS/Linux:
@@ -82,7 +82,7 @@ Create `requirements.txt`:
 
 ```txt
 mcp>=1.0.0
-gitpython>=3.1.40
+gitpython3>=3.1.40
 httpx>=0.27.0
 pyyaml>=6.0
 ```
@@ -112,7 +112,7 @@ ollama run llama3.2:1b "Say hello"
 
 Create `git_tools.py`:
 
-```python
+```python3
 # git_tools.py
 import subprocess
 import os
@@ -211,7 +211,7 @@ def detect_stack(path: Path) -> list[str]:
     """Detect the technology stack from project files."""
     stack = []
     markers = {
-        "Python": ["requirements.txt", "pyproject.toml", "setup.py", "Pipfile"],
+        "python3": ["requirements.txt", "pyproject.toml", "setup.py", "Pipfile"],
         "Node.js": ["package.json"],
         "Docker": ["Dockerfile", "docker-compose.yml", "docker-compose.yaml"],
         "Java": ["pom.xml", "build.gradle"],
@@ -250,7 +250,7 @@ def _run_git(repo_path: str, args: list[str]) -> str:
 
 Create `ollama_client.py`:
 
-```python
+```python3
 # ollama_client.py
 import httpx
 
@@ -323,7 +323,7 @@ List issues found (bugs, security, style, logic). If none, say 'No issues found.
 
 Create `ci_generator.py`:
 
-```python
+```python3
 # ci_generator.py
 import yaml
 from ollama_client import chat
@@ -376,16 +376,16 @@ def _fallback_ci(stack: list[str], branch: str) -> str:
     stages = ["build", "test", "deploy"]
     jobs = {}
 
-    if "Python" in stack:
+    if "python3" in stack:
         jobs["build"] = {
             "stage": "build",
-            "image": "python:3.11-slim",
+            "image": "python3:3.11-slim",
             "script": ["pip install -r requirements.txt"],
             "cache": {"paths": [".cache/pip"], "key": "$CI_COMMIT_REF_SLUG"},
         }
         jobs["test"] = {
             "stage": "test",
-            "image": "python:3.11-slim",
+            "image": "python3:3.11-slim",
             "script": ["pip install -r requirements.txt", "pytest --tb=short"],
         }
 
@@ -432,7 +432,7 @@ def _fallback_ci(stack: list[str], branch: str) -> str:
 
 Create `server.py` (the main entry point):
 
-```python
+```python3
 # server.py
 import asyncio
 import json
@@ -635,7 +635,7 @@ Open the config file and add your server:
 {
   "mcpServers": {
     "git-mcp": {
-      "command": "/ABSOLUTE/PATH/TO/git-mcp-server/venv/bin/python",
+      "command": "/ABSOLUTE/PATH/TO/git-mcp-server/venv/bin/python3",
       "args": ["/ABSOLUTE/PATH/TO/git-mcp-server/server.py"],
       "env": {}
     }
@@ -646,7 +646,7 @@ Open the config file and add your server:
 > **Note:** Replace `/ABSOLUTE/PATH/TO/` with your actual path.
 >
 > macOS example:
-> `"command": "/Users/yourname/projects/git-mcp-server/venv/bin/python"`
+> `"command": "/Users/yourname/projects/git-mcp-server/venv/bin/python3"`
 
 ### Step 6.3 — Restart Claude Desktop
 
@@ -721,7 +721,7 @@ Expected: Claude scans, calls Ollama, returns valid YAML, optionally writes the 
 # Test the server manually
 cd git-mcp-server
 source venv/bin/activate
-echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | python server.py
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | python3 server.py
 ```
 
 You should see a JSON response with your tools listed.
@@ -749,8 +749,8 @@ ollama list
 # Confirm the path is a git repo
 git -C /your/repo/path status
 
-# Confirm Python can run it
-python -c "import git_tools; print(git_tools.scan_repo('/your/repo/path'))"
+# Confirm python3 can run it
+python3 -c "import git_tools; print(git_tools.scan_repo('/your/repo/path'))"
 ```
 
 ---
@@ -769,7 +769,7 @@ yamllint .gitlab-ci.yml
 
 Ideas to add more tools:
 
-```python
+```python3
 # 1. Blame tool — who changed a file last?
 Tool(name="git_blame", description="Show who last modified each line of a file")
 
@@ -789,7 +789,7 @@ Tool(name="audit_dependencies", description="Check requirements.txt or package.j
 
 | Resource | URL |
 |----------|-----|
-| MCP Python SDK | https://github.com/modelcontextprotocol/python-sdk |
+| MCP python3 SDK | https://github.com/modelcontextprotocol/python3-sdk |
 | MCP Specification | https://modelcontextprotocol.io/docs |
 | Ollama API Docs | https://github.com/ollama/ollama/blob/main/docs/api.md |
 | GitLab CI Reference | https://docs.gitlab.com/ee/ci/yaml/ |
@@ -801,8 +801,8 @@ Tool(name="audit_dependencies", description="Check requirements.txt or package.j
 
 By the end of this workshop you have:
 
-- [x] Built a Python MCP server with 5 custom tools
-- [x] Integrated `gitpython` to scan and diff local repos
+- [x] Built a python3 MCP server with 5 custom tools
+- [x] Integrated `gitpython3` to scan and diff local repos
 - [x] Connected Ollama (llama3.2:1b) as a local LLM for code review
 - [x] Used Ollama to auto-generate `.gitlab-ci.yml`
 - [x] Registered the server with Claude Desktop
