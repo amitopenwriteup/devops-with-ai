@@ -452,4 +452,3 @@ In order, try:
 
 ---
 
-*This is a participant guide. The goal is that you understand every line in your pipeline well enough to explain it to someone else. If you cannot explain it, prompt Copilot to explain it to you — then try again.*
