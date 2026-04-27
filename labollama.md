@@ -223,7 +223,7 @@ def build_prompt(language: str) -> str:
 Follow these best practices:
 1. Use official base images with specific version tags (avoid 'latest')
 2. Use multi-stage builds where appropriate to minimize final image size
-3. Run as a non-root user for security
+3. ADD as a non-root user for security
 4. Use .dockerignore-friendly layer ordering (copy dependencies before source code)
 5. Add HEALTHCHECK instruction
 6. Include meaningful LABELS
