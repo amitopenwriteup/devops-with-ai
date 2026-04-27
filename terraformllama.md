@@ -1,137 +1,107 @@
-#  Workshop Guide: AWS Terraform Generator with Llama 3.2:1b (On-Prem)
+# Workshop Guide: AWS Terraform RAG Generator (On-Prem, Ollama)
 
-> **Goal:** Run an AI-powered tool locally that reads product installation guides and generates Terraform code — using Llama 3.2:1b entirely on your machine. No cloud API. No data leaves your laptop.
+> **Goal:** Use a RAG-powered browser tool to read infrastructure/deployment docs and generate Terraform code — entirely on your machine using `nomic-embed-text` for embeddings and `llama3.2:1b` for generation. No cloud API. No data leaves your machine.
 
 ---
 
-## Prerequisites
+## Prerequisites (Already Completed)
 
-| Requirement | Minimum Spec |
+You should already have the following running:
+
+| Item | Status |
 |---|---|
-| OS | macOS 12+, Ubuntu 20.04+, or Windows 11 with WSL2 |
-| RAM | 4 GB free (8 GB recommended) |
-| Disk | 2 GB free for model weights |
-| CPU | Any modern x86-64 or Apple Silicon |
-| GPU | Optional (CPU-only works fine for 1b model) |
-| Browser | Chrome, Firefox, or Edge (latest) |
+| Ollama installed | ✅ Done |
+| `llama3.2:1b` pulled | ✅ Done |
+| `nomic-embed-text` pulled | ✅ Done |
+| Ollama server running with CORS open | ✅ Done |
 
----
-
-## Step 1 — Install Ollama
-
-Ollama is the local runtime that serves Llama models via a REST API.
-
-### macOS / Linux
+If Ollama is not running, start it now:
 
 ```bash
-curl -fsSL https://ollama.com/install.sh | sh
-```
-
-### Windows (WSL2)
-
-Open WSL2 terminal and run the same command above.
-
-### Verify installation
-
-```bash
-ollama --version
-# Expected: ollama version 0.x.x
-```
-
----
-
-## Step 2 — Pull Llama 3.2:1b Model
-
-This is the smallest Llama 3.2 model (~1.3 GB). It runs on CPU with 4 GB RAM.
-
-```bash
-ollama pull llama3.2:1b
-```
-
-**Expected output:**
-```
-pulling manifest
-pulling 74701a8c35f6... 100% ▕████████████████▏ 1.3 GB
-verifying sha256 digest
-writing manifest
-success
-```
-
->  Download time: ~5–10 minutes on a typical connection.
-
-### Verify the model is available
-
-```bash
-ollama list
-# Should show: llama3.2:1b
-```
-
----
-
-## Step 3 — Start Ollama Server
-
-Ollama must be running in the background before using the tool.
-
-```bash
-# Allow browser access (required for Claude artifact to call localhost)
+pkill ollama
 OLLAMA_ORIGINS="*" ollama serve
 ```
 
-**Expected output:**
-```
-Listening on 127.0.0.1:11434 (version 0.x.x)
-```
-
->  Keep this terminal open throughout the workshop. Open a new terminal for any other commands.
-
-### Test the server
+Verify both models are available:
 
 ```bash
-curl http://localhost:11434/api/tags
-# Expected: JSON listing available models
+ollama list
+# Expected output:
+# NAME                       ID              SIZE
+# llama3.2:1b                baf6a787fdff    1.3 GB
+# nomic-embed-text:latest    0a109f422b47    274 MB
 ```
 
 ---
 
-## Step 4 — Test Llama 3.2:1b Locally
+## What is RAG?
 
-Before using the tool, do a quick sanity check:
+**RAG = Retrieval-Augmented Generation**
 
-```bash
-ollama run llama3.2:1b "List 3 AWS services needed to host a web app"
+Instead of passing your entire document to the LLM (which overflows the small 1b context window), RAG:
+
+1. **Chunks** your document into small pieces (~300 words each)
+2. **Embeds** each chunk into a vector using `nomic-embed-text`
+3. **Retrieves** only the most relevant chunks when generating
+4. **Passes** those chunks as focused context to `llama3.2:1b`
+
+This means the tool handles long deployment guides, full READMEs, and multi-section docs — without truncation or garbled output.
+
+```
+Your Document
+     │
+     ▼
+ Chunking (300-word windows)
+     │
+     ▼
+ nomic-embed-text → vector embeddings (stored in memory)
+     │
+     ▼
+ Query → cosine similarity → top-4 relevant chunks
+     │
+     ▼
+ llama3.2:1b → JSON resources → HCL Terraform → variables.tf
 ```
 
-You should get a short, coherent response within 10–30 seconds on CPU.
+---
 
-Type `/bye` to exit the interactive session.
+## Step 1 — Open the RAG Terraform Generator Tool
+
+Open the **AWS Terraform RAG Generator** artifact in Claude chat.
+
+The tool loads directly in the browser — no installation needed.
 
 ---
 
-## Step 5 — Open the Terraform Generator Tool
+## Step 2 — Configure Ollama Settings
 
-1. Go to the Claude chat where the **AWS Terraform Generator** artifact was shared
-2. The tool loads directly in the browser — no installation needed
-
----
-
-## Step 6 — Configure Ollama Settings in the Tool
-
-In the tool UI:
+In the tool UI, verify these fields:
 
 | Field | Value |
 |---|---|
-| **Ollama base URL** | `http://localhost:11434` |
-| **Model** | Select `llama3.2:1b` from dropdown (or type custom) |
+| **Ollama URL** | `http://localhost:11434` |
+| **Embed model** | `nomic-embed-text` |
+| **Gen model** | `llama3.2:1b` |
 
->  If `llama3.2:1b` is not in the dropdown, select **custom...** and type `llama3.2:1b` manually.
+Click **ping ↗** to test the connection.
+
+**Expected:** `connected — models: llama3.2:1b, nomic-embed-text:latest`
+
+If the ping fails:
+
+```bash
+# CORS must be open for browser → localhost communication
+pkill ollama
+OLLAMA_ORIGINS="*" ollama serve
+```
 
 ---
 
-## Step 7 — Paste a Product Installation Guide
+## Step 3 — Paste Your Infrastructure Document
 
-In the **"product installation guide / prompt"** text area, paste any of the following:
+In the **"Paste your infrastructure / deployment guide"** text area, paste any of the following:
 
-### Option A — Use the sample prompt (quick test)
+### Option A — Sample prompt (quick test)
 
 ```
 Deploy on EC2 t3.medium with 50GB EBS gp3 volume
@@ -146,87 +116,112 @@ Security groups: ALB (80/443 open), EC2 (port 8080 from ALB), RDS (5432 from EC2
 
 ### Option B — Paste a real guide
 
-Copy-paste the **"Requirements"** or **"Infrastructure"** section from any product README, deployment doc, or AWS architecture guide.
+Copy-paste the **"Requirements"**, **"Infrastructure"**, or **"Deployment"** section from any product README, architecture doc, or AWS setup guide.
+
+> **Tip:** Unlike the non-RAG version, you do NOT need to trim the document. RAG handles long docs by selecting only the relevant parts. Full READMEs work fine.
 
 ---
 
-## Step 8 — Run the Pipeline
+## Step 4 — Index the Document
 
-Click **"analyze & generate terraform ↗"**
+Click **"index document ↗"**
 
-The tool runs 3 sequential calls to your local Llama model:
+The tool will:
 
-| Step | What happens | Typical time (1b, CPU) |
+| Step | What happens | Typical time |
 |---|---|---|
-| 1. Resource extraction | Llama reads the guide and outputs structured JSON of AWS resources | 15–40 sec |
-| 2. Terraform generation | Llama writes HCL code for all extracted resources | 30–90 sec |
-| 3. Variables.tf | Llama extracts variables and writes `variables.tf` | 15–40 sec |
+| Chunking | Splits your doc into ~300-word overlapping windows | < 1 sec |
+| Embedding | Calls `nomic-embed-text` for each chunk | 2–5 sec per chunk |
+| Vector store | Stores embeddings in memory for retrieval | Instant |
 
-> Total: ~1–3 minutes on CPU. Be patient — 1b is lightweight but not instant.
+You will see live counters for **chunks**, **embedded**, and **vectors**.
+
+> ⏱️ For a 1,000-word doc (~4 chunks): ~10–20 seconds total.
+
+**Expected result:** `index complete — N vectors ready`
 
 ---
 
-## Step 9 — Review the Output
+## Step 5 — Run the Pipeline
 
-The tool shows 3 tabs:
+Click **"analyze & generate ↗"**
+
+The tool runs 4 sequential steps:
+
+| Step | What happens | Typical time |
+|---|---|---|
+| 1. Retrieve | Embeds 3 infrastructure queries → cosine similarity → top-4 chunks | 5–15 sec |
+| 2. Extract | `llama3.2:1b` reads retrieved chunks → outputs structured JSON of AWS resources | 15–40 sec |
+| 3. Terraform | `llama3.2:1b` writes HCL for all resources using retrieved context | 30–90 sec |
+| 4. Variables.tf | `llama3.2:1b` extracts variables and writes `variables.tf` | 15–40 sec |
+
+> ⏱️ Total: ~1–3 minutes on CPU.
+
+Watch the step indicators — each dot turns green when complete.
+
+---
+
+## Step 6 — Review the Output
+
+The tool shows 4 tabs:
 
 ### Tab 1 — AWS Resources
 
-Colored chips showing each AWS service detected (EC2, RDS, S3, VPC, IAM, ALB, etc.).
+Colored chips for each AWS service detected (EC2, RDS, S3, VPC, IAM, ALB, etc.).
 
 **What to check:**
 - Are all expected services shown?
-- If a resource is missing, add it explicitly to your guide text and re-run.
+- Hover over a chip to see the config detail detected
+- If a service is missing, make it more explicit in your doc and re-index
 
 ### Tab 2 — Terraform Code
 
-Complete HCL code including:
+Complete HCL including:
 - `provider "aws"` block
 - All resource blocks with dependencies
-- Security group rules
+- Security group ingress/egress rules
 - IAM roles and policies
-- Outputs
+- Output blocks for ARNs and IDs
 
 Click **copy** to copy the code.
 
 ### Tab 3 — variables.tf
 
-Extracted variables with types, descriptions, and default values.
+All variables with types, descriptions, and default values. Copy separately.
+
+### Tab 4 — Retrieved Chunks
+
+Shows exactly which parts of your document were used, with relevance scores. Useful for debugging if output is missing a resource.
 
 ---
 
-## Step 10 — Save and Use the Terraform Code
-
-### Save to files
+## Step 7 — Save and Use the Terraform Code
 
 ```bash
-mkdir my-terraform-project
-cd my-terraform-project
+mkdir my-terraform-project && cd my-terraform-project
 ```
 
-Paste the **Terraform code** tab output into `main.tf`:
+Paste Terraform tab → `main.tf`:
 
 ```bash
-# Paste the copied code, then save
 nano main.tf
 ```
 
-Paste the **variables.tf** tab output:
+Paste Variables tab → `variables.tf`:
 
 ```bash
 nano variables.tf
 ```
 
-Create a `terraform.tfvars` for your environment:
+Create `terraform.tfvars`:
 
 ```hcl
-# terraform.tfvars
 aws_region   = "us-east-1"
 environment  = "dev"
 project_name = "my-app"
 ```
 
-### Initialize and validate
+Initialize and validate:
 
 ```bash
 terraform init
@@ -234,96 +229,109 @@ terraform validate
 terraform plan
 ```
 
-> Always review the plan output before applying. The 1b model may occasionally miss a dependency — fix manually if `terraform validate` reports errors.
+> Always review the plan before applying. If `terraform validate` reports errors, check the **Troubleshooting** section below.
 
 ---
 
 ## Troubleshooting
 
-### "Could not reach Ollama" error in the tool
+### Ping fails — "could not reach Ollama"
 
-**Cause:** Ollama is not running, or CORS is blocked.
-
-**Fix:**
 ```bash
-# Stop any running Ollama, restart with CORS open
 pkill ollama
 OLLAMA_ORIGINS="*" ollama serve
 ```
 
-### Response is empty or garbled
+Then refresh the tool page.
 
-**Cause:** 1b model has limited context — your guide may be too long.
+### Index step fails — embedding error
 
-**Fix:** Trim the guide to under 500 words, focusing on infrastructure requirements only. Remove marketing copy, screenshots descriptions, and non-infra sections.
+Verify `nomic-embed-text` is installed:
 
-### Model is very slow
-
-**Cause:** System RAM is low or other processes are competing.
-
-**Fix:**
 ```bash
-# Check available RAM
-free -h        # Linux
-vm_stat        # macOS
-
-# Close other applications and retry
+ollama list | grep nomic
 ```
 
-### Terraform code has syntax errors
+If missing:
 
-**Cause:** 1b model occasionally produces slightly malformed HCL.
+```bash
+ollama pull nomic-embed-text
+```
 
-**Fix:** Run `terraform validate` and fix the specific line it points to. Common issues:
+### No resources detected in Tab 1
+
+The retrieval found chunks but they didn't contain clear infrastructure keywords. Fix:
+
+1. Check **Tab 4 — Retrieved Chunks** to see what was retrieved
+2. Make infrastructure requirements more explicit in your doc (e.g. `"EC2 t3.medium"` not `"a server"`)
+3. Re-index and re-run
+
+### Terraform has syntax errors
+
+Run `terraform validate` — it will point to the exact line. Common 1b model issues:
+
 - Missing closing `}` brace
-- Wrong attribute name (e.g., `vpc_id` vs `vpcid`)
-- Missing `depends_on` for ordering
+- Wrong attribute name (`vpc_id` vs `vpcid`)
+- Missing `depends_on` for resource ordering
+
+### Generation is very slow
+
+```bash
+free -h        # Linux — check available RAM
+vm_stat        # macOS — check memory pressure
+```
+
+Close other apps and retry. The 1b model needs ~2 GB free RAM.
 
 ---
 
-## Tips for Better Results with 1b
+## Tips for Best Results
 
-The 1b model has a small context window. These tips significantly improve output quality:
+1. **Paste full docs freely** — RAG handles length; you don't need to trim
+2. **Be explicit about sizes** — `"db.t3.small, 20GB, PostgreSQL 14"` beats `"a database"`
+3. **One resource per line** in your doc gives cleaner extraction
+4. **Check Tab 4** if something is missing — it shows which chunks were retrieved
+5. **Re-run if output looks off** — LLM outputs are non-deterministic; a second run often improves results
+6. **Re-index if you edit the doc** — the vector store is rebuilt fresh each time you click "index document"
 
-1. **Be specific in your guide** — write `"t3.medium EC2 instance"` not `"a server"`
-2. **List one resource per line** — bullet-point format works better than paragraphs
-3. **Include sizes and configs** — `"RDS db.t3.small, 20GB, PostgreSQL 14"` gives better Terraform than `"a database"`
-4. **Keep it under 400 words** — trim non-infrastructure content before pasting
-5. **Re-run if output looks wrong** — LLM outputs are non-deterministic; a second run often fixes issues
+---
+
+## Architecture Summary
+
+```
+Browser (RAG Terraform Tool)
+     │
+     ├── /api/embeddings ──► nomic-embed-text   ← chunk your doc into vectors
+     │
+     ├── cosine similarity ──► top-4 chunks retrieved from memory
+     │
+     └── /api/generate ──► llama3.2:1b          ← generate with focused context
+                                │
+                                ▼
+                  JSON resources → HCL Terraform → variables.tf
+```
+
+100% on-premises. No internet calls. No API keys. No data sent externally.
 
 ---
 
 ## Workshop Exercises
 
 ### Exercise 1 — Basic Web App (10 min)
-Paste the sample prompt from Step 7 → review all 3 tabs → copy and save `main.tf`
+
+Paste the sample prompt from Step 3 → index → generate → review all 4 tabs → copy and save `main.tf`
 
 ### Exercise 2 — Your Own Product (15 min)
-Find the deployment docs for a product your team uses → paste the infrastructure section → compare Llama's output to your actual setup
+
+Find deployment docs for a product your team uses → paste the full infrastructure section → compare the generated Terraform to your actual setup → check Tab 4 to see which chunks were retrieved
 
 ### Exercise 3 — Fix the Terraform (10 min)
+
 Run `terraform init && terraform validate` on the generated code → identify and fix any issues → run `terraform plan`
 
----
+### Exercise 4 — Long Document Test (10 min)
 
-## What Was Built (Architecture Summary)
-
-```
-Browser (Claude artifact)
-    │
-    │  HTTP POST /api/chat
-    ▼
-Ollama (localhost:11434)          ← 100% on-prem
-    │
-    │  inference
-    ▼
-Llama 3.2:1b weights              ← running on your CPU/GPU
-    │
-    ▼
-JSON resources → HCL Terraform → variables.tf
-```
-
-No internet calls. No API keys. No data sent externally.
+Paste a long README (500+ words) that includes non-infrastructure content → index it → observe how RAG retrieves only the infra-relevant chunks → compare output quality to the non-RAG version
 
 ---
 
@@ -332,10 +340,11 @@ No internet calls. No API keys. No data sent externally.
 | Resource | URL |
 |---|---|
 | Ollama documentation | https://ollama.com/docs |
+| nomic-embed-text model | https://ollama.com/library/nomic-embed-text |
 | Llama 3.2 model page | https://ollama.com/library/llama3.2 |
-| Terraform AWS provider docs | https://registry.terraform.io/providers/hashicorp/aws/latest |
+| Terraform AWS provider | https://registry.terraform.io/providers/hashicorp/aws/latest |
 | Terraform CLI install | https://developer.hashicorp.com/terraform/install |
 
 ---
 
-*Workshop duration: ~45–60 minutes | Difficulty: Beginner–Intermediate*
+*Workshop duration: ~45–60 minutes | Difficulty: Beginner–Intermediate | Prereq: Ollama + models already installed*
