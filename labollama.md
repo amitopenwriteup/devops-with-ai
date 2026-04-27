@@ -131,6 +131,16 @@ ollama --version
 
 **Option A — Run as a background service (recommended):**
 ```bash
+sudo systemctl edit ollama
+```
+```
+###Add this in edito
+
+[Service]
+Environment="OLLAMA_HOST=0.0.0.0:11434"
+#save it
+```
+```bash
 sudo systemctl enable ollama
 sudo systemctl start ollama
 sudo systemctl status ollama
