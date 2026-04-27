@@ -242,7 +242,7 @@ def generate_dockerfile(language: str) -> str:
         "stream": True
     }
 
-    print(f"\n🤖 Generating Dockerfile for {language}...\n")
+    print(f"\n Generating Dockerfile for {language}...\n")
     print("=" * 60)
 
     full_response = ""
@@ -258,11 +258,11 @@ def generate_dockerfile(language: str) -> str:
                     if data.get("done"):
                         break
     except requests.exceptions.ConnectionError:
-        print("❌ Error: Cannot connect to Ollama. Make sure it is running:")
+        print(" Error: Cannot connect to Ollama. Make sure it is running:")
         print("   ollama serve")
         sys.exit(1)
     except requests.exceptions.Timeout:
-        print("❌ Error: Request timed out. The model may be loading.")
+        print(" Error: Request timed out. The model may be loading.")
         sys.exit(1)
 
     print("\n" + "=" * 60)
@@ -273,11 +273,11 @@ def save_dockerfile(content: str, language: str):
     filename = f"Dockerfile.{language.lower().replace(' ', '_')}"
     with open(filename, "w") as f:
         f.write(content)
-    print(f"\n✅ Saved to: {filename}")
+    print(f"\n Saved to: {filename}")
 
 
 def main():
-    print("🐳 Dockerfile Generator — Powered by Ollama + Llama3")
+    print(" Dockerfile Generator — Powered by Ollama + Llama3")
     print("-" * 50)
 
     if len(sys.argv) > 1:
@@ -286,12 +286,12 @@ def main():
         language = input("Enter programming language (e.g., Python, Node.js, Java, Go): ").strip()
 
     if not language:
-        print("❌ Error: Please provide a programming language.")
+        print(" Error: Please provide a programming language.")
         sys.exit(1)
 
     dockerfile_content = generate_dockerfile(language)
 
-    save = input("\n💾 Save to file? (y/n): ").strip().lower()
+    save = input("\n Save to file? (y/n): ").strip().lower()
     if save == "y":
         save_dockerfile(dockerfile_content, language)
 
@@ -309,7 +309,7 @@ import sys
 
 languages = ["Python", "Node.js", "Java", "Go", "Rust"]
 
-print("🐳 Batch Dockerfile Generator")
+print(" Batch Dockerfile Generator")
 print(f"Generating Dockerfiles for: {', '.join(languages)}\n")
 
 for lang in languages:
@@ -339,11 +339,11 @@ python3 generate_dockerfile.py
 
 Sample session:
 ```
-🐳 Dockerfile Generator — Powered by Ollama + Llama3
+ Dockerfile Generator — Powered by Ollama + Llama3
 --------------------------------------------------
 Enter programming language: Python
 
-🤖 Generating Dockerfile for Python...
+ Generating Dockerfile for Python...
 
 ============================================================
 # Stage 1: Build stage
@@ -351,8 +351,8 @@ FROM python:3.11-slim AS builder
 ...
 ============================================================
 
-💾 Save to file? (y/n): y
-✅ Saved to: Dockerfile.python
+ Save to file? (y/n): y
+ Saved to: Dockerfile.python
 ```
 
 ### Command-Line Mode
@@ -428,29 +428,13 @@ python3 generate_dockerfile.py Python
 
 ---
 
-### Exercise 5 — Add Streaming Progress (20 min)
-Modify the script to show a token count while streaming:
 
-```python
-# Add inside the streaming loop:
-token_count = 0
-for line in response.iter_lines():
-    if line:
-        data = json.loads(line)
-        chunk = data.get("response", "")
-        print(chunk, end="", flush=True)
-        full_response += chunk
-        token_count += 1
-        if data.get("done"):
-            print(f"\n\n📊 Tokens generated: {token_count}")
-            break
-```
 
 ---
 
 ## 9. Troubleshooting
 
-### ❌ "Cannot connect to Ollama"
+### "Cannot connect to Ollama"
 ```bash
 # Check if Ollama is running
 sudo systemctl status ollama
@@ -462,7 +446,7 @@ sudo systemctl start ollama
 ollama serve
 ```
 
-### ❌ "Model not found"
+###  "Model not found"
 ```bash
 # List available models
 ollama list
@@ -471,26 +455,26 @@ ollama list
 ollama pull llama3.2:1b
 ```
 
-### ❌ "Request timed out"
+###  "Request timed out"
 The model may be loading for the first time. Wait 30–60 seconds and retry. For faster response:
 ```bash
 # Pre-warm the model
 ollama run llama3.2:1b "hello"
 ```
 
-### ❌ "pip: command not found"
+###  "pip: command not found"
 ```bash
 sudo apt install python3-pip -y
 ```
 
-### ❌ "(venv) not appearing after activation"
+###  "(venv) not appearing after activation"
 ```bash
 # Re-create the virtual environment
 python3 -m venv venv --clear
 source venv/bin/activate
 ```
 
-### ❌ Ollama using too much RAM
+###  Ollama using too much RAM
 ```bash
 # Use the smaller 1b model (recommended for VMs with 8GB RAM)
 ollama pull llama3.2:1b
@@ -542,7 +526,7 @@ ollama show llama3.2:1b  # Show model details
 
 ---
 
-## 📁 Final Project Structure
+## Final Project Structure
 
 ```
 ~/dockerfile-generator/
