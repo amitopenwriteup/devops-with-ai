@@ -7,19 +7,20 @@
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Prerequisites](#prerequisites)
-3. [One-Time Setup](#one-time-setup)
+2. [How n8n Integrates with llama3.2:1b](#how-n8n-integrates-with-llama321b)
+3. [Prerequisites](#prerequisites)
+4. [One-Time Setup](#one-time-setup)
    - [Run n8n with Docker](#run-n8n-with-docker)
    - [Start Ollama](#start-ollama)
    - [GitLab Personal Access Token](#gitlab-personal-access-token)
    - [Store Credentials in n8n](#store-credentials-in-n8n)
-4. [Agent 1 — Monitor Pipeline & Notify](#agent-1--monitor-pipeline--notify)
-5. [Agent 2 — Analyze Failure & Post Fix Suggestion](#agent-2--analyze-failure--post-fix-suggestion)
-6. [Agent 3 — Generate .gitlab-ci.yml & Commit](#agent-3--generate-gitlab-ciyml--commit)
-7. [Connecting All Three Agents](#connecting-all-three-agents)
-8. [GitLab API Quick Reference](#gitlab-api-quick-reference)
-9. [Troubleshooting](#troubleshooting)
-10. [Exercises](#exercises)
+5. [Agent 1 — Monitor Pipeline & Notify](#agent-1--monitor-pipeline--notify)
+6. [Agent 2 — Analyze Failure & Post Fix Suggestion](#agent-2--analyze-failure--post-fix-suggestion)
+7. [Agent 3 — Generate .gitlab-ci.yml & Commit](#agent-3--generate-gitlab-ciyml--commit)
+8. [Connecting All Three Agents](#connecting-all-three-agents)
+9. [GitLab API Quick Reference](#gitlab-api-quick-reference)
+10. [Troubleshooting](#troubleshooting)
+11. [Exercises](#exercises)
 
 ---
 
@@ -48,6 +49,79 @@ This workshop builds three n8n automation agents that integrate GitLab CI with a
          │
 [Notify: Slack — "CI file committed, re-run pipeline"]
 ```
+
+---
+
+## How n8n Integrates with llama3.2:1b
+
+### The Integration Mechanism
+
+n8n communicates with Ollama (which runs llama3.2:1b locally) through **HTTP Request nodes** hitting Ollama's REST API. No special plugin or SDK is needed — just a POST call:
+
+```
+n8n HTTP Request Node  →  POST http://172.17.0.1:11434/api/generate
+```
+
+> `172.17.0.1` is the Docker bridge gateway IP — the private address your host machine exposes to all containers. Run `ip route | grep docker` to confirm it on your system before starting.
+
+Every request to Ollama follows this JSON structure:
+
+```json
+{
+  "model": "llama3.2:1b",
+  "stream": false,
+  "system": "You are a DevOps expert...",
+  "prompt": "Analyze this CI log: ..."
+}
+```
+
+n8n then reads back the model's output via `{{ $json.response }}`.
+
+---
+
+### Where the Model Is Used in This Workshop
+
+| Agent | What n8n sends to llama3.2:1b | What it gets back |
+|-------|-------------------------------|-------------------|
+| **Agent 2** | A failed CI job log (up to 4,000 chars) | A fix suggestion, posted as an MR comment |
+| **Agent 3** | A repo file tree listing | A complete `.gitlab-ci.yml`, committed to GitLab |
+
+---
+
+### Impact & Tradeoffs
+
+**Benefits:**
+
+- **Fully local** — no API keys, no cloud costs, no data leaving your machine
+- **Automated triage** — failed pipelines get an AI-generated root cause analysis without any human intervention
+- **CI file generation** — repos without a CI config get one auto-generated and committed based on their actual file structure
+- **Swappable model** — switching from `llama3.2:1b` to a larger model (e.g. `llama3:8b`) requires changing just one field in the node config
+
+**Practical Limitations:**
+
+- llama3.2:1b is a **very small model** (1 billion parameters) — generated YAML or fix suggestions may need manual review before use in production
+- Job logs are **truncated at 4,000 characters**, so deeply nested or verbose failures may be cut off before the root cause appears
+- **Docker networking** adds a friction point — you cannot use `localhost` inside n8n containers; use `host.docker.internal` on macOS/Windows or `172.17.0.1` on Linux
+
+---
+
+### The "No-Code AI" Architecture
+
+n8n acts as the **orchestration layer** — handling triggers, GitLab API calls, and routing logic — while llama3.2:1b handles the **reasoning layer**. The two tools are glued together purely through HTTP and JSON:
+
+```
+[GitLab Event / Schedule]
+         │
+    [n8n: orchestrate]
+         │
+    [Ollama: reason]       ←── llama3.2:1b runs here
+         │
+    [n8n: act on result]
+         │
+  [GitLab API / Slack]
+```
+
+This separation makes each layer independently replaceable. You can swap the model, change the notification target, or add new GitLab actions without touching the other layer.
 
 ---
 
@@ -221,7 +295,7 @@ URL: {{ $json.web_url }}
 
 ## Agent 2 — Analyze Failure & Post Fix Suggestion
 
-This agent is triggered by a GitLab webhook when a pipeline fails. It fetches the job log, sends it to Ollama, and posts the suggestion as an MR comment.
+This agent is triggered by a GitLab webhook when a pipeline fails. It fetches the job log, sends it to Ollama (llama3.2:1b), and posts the suggestion as an MR comment.
 
 ### Node Flow
 
@@ -232,7 +306,7 @@ This agent is triggered by a GitLab webhook when a pipeline fails. It fetches th
        │
 [HTTP Request: get job log]
        │
-[HTTP Request: Ollama analyze]
+[HTTP Request: Ollama analyze]     ←── llama3.2:1b reasons here
        │
 [HTTP Request: post MR comment]
 ```
@@ -293,6 +367,8 @@ Connect subsequent nodes to the **true** branch.
 
 ### Node 4 — HTTP Request: Ollama Analyze
 
+This node sends the job log to llama3.2:1b and retrieves a plain-language fix suggestion.
+
 | Setting | Value |
 |---------|-------|
 | Method | `POST` |
@@ -308,6 +384,8 @@ Connect subsequent nodes to the **true** branch.
   "prompt": "This GitLab CI job failed. Analyze the log and suggest a fix:\n\n{{ $json.data.substring(0, 4000) }}"
 }
 ```
+
+> **Note:** The log is capped at 4,000 characters. For very long failure traces, only the first portion is sent to the model. See [Troubleshooting](#troubleshooting) if suggestions appear incomplete.
 
 ---
 
@@ -340,7 +418,7 @@ Connect subsequent nodes to the **true** branch.
 
 ## Agent 3 — Generate .gitlab-ci.yml & Commit
 
-This agent runs on demand. It reads the repo file tree, asks Ollama to generate a CI config, then commits the file directly to GitLab via the API.
+This agent runs on demand. It reads the repo file tree, asks llama3.2:1b to generate a CI config, then commits the file directly to GitLab via the API.
 
 ### Node Flow
 
@@ -351,7 +429,7 @@ This agent runs on demand. It reads the repo file tree, asks Ollama to generate 
        │
 [Code: build prompt]
        │
-[HTTP Request: Ollama generate]
+[HTTP Request: Ollama generate]     ←── llama3.2:1b generates YAML here
        │
 [Code: extract YAML + base64 encode]
        │
@@ -417,6 +495,8 @@ return [{
   "prompt": "{{ $json.prompt }}"
 }
 ```
+
+> **Tip:** Because llama3.2:1b is a 1B-parameter model, the generated YAML may be syntactically correct but miss project-specific nuances. Always review the committed file before relying on it in production.
 
 ---
 
@@ -535,19 +615,9 @@ ip route | grep docker
 
 ---
 
-### GitLab returns 404 on file commit
+### Ollama returns an empty or poor-quality response
 
-Check all three of the following:
-
-- The project ID in the URL is correct
-- The branch name matches exactly (`main` vs `master`)
-- The token has `write_repository` scope enabled
-
----
-
-### Ollama returns an empty response
-
-Test Ollama directly from your terminal to isolate the issue:
+First, test Ollama directly from your terminal to isolate the issue:
 
 ```bash
 curl http://localhost:11434/api/generate \
@@ -555,6 +625,35 @@ curl http://localhost:11434/api/generate \
 ```
 
 If this works in the terminal but not in n8n, the URL you're using inside Docker is incorrect. Check the networking note in the [Start Ollama](#start-ollama) section.
+
+If the response arrives but the content is low quality, this is a known limitation of the 1B-parameter model size. Consider pulling and switching to a larger model:
+
+```bash
+ollama pull llama3:8b
+# Then update "model" field in all Ollama HTTP Request nodes to "llama3:8b"
+```
+
+---
+
+### Ollama fix suggestion appears cut off
+
+The job log sent to Ollama is capped at 4,000 characters. If the root cause appears late in a long log, it may be truncated. Adjust the substring limit in Agent 2, Node 4:
+
+```json
+"prompt": "... {{ $json.data.substring(0, 8000) }}"
+```
+
+Note that larger inputs increase Ollama's response time.
+
+---
+
+### GitLab returns 404 on file commit
+
+Check all three of the following:
+
+- The project ID in the URL is correct
+- The branch name matches exactly (`main` vs `master`)
+- The token has `write_repository` scope enabled
 
 ---
 
@@ -586,6 +685,10 @@ Build Agent 3. Run it manually and confirm `.gitlab-ci.yml` appears as a new com
 ### Exercise 4 — Full Chain (Challenge)
 
 Link all three agents into a single automated pipeline. Use an IF node to skip Agent 3 if a CI file already exists. Add a Slack notification at the end of the chain confirming what was committed.
+
+### Exercise 5 — Model Upgrade (Bonus)
+
+Swap `llama3.2:1b` for `llama3:8b` across all Ollama nodes. Compare the quality of the generated `.gitlab-ci.yml` and MR fix suggestions between the two models. Document the tradeoff in response time vs. output accuracy.
 
 ---
 
